@@ -47,6 +47,55 @@ interface ConversationMessage {
   created_at: string;
 }
 
+interface Plan {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  currency: string;
+  token_amount: number;
+  features: string[];
+  is_active: boolean;
+  created_at?: string;
+}
+
+interface PlansResponse {
+  plans: Plan[];
+}
+
+interface UserPlan {
+  id: number;
+  plan_name: string;
+  token_amount: number;
+  tokens_used: number;
+  tokens_remaining: number;
+  start_date: string;
+  end_date?: string;
+  status: 'active' | 'expired' | 'cancelled';
+  features: string[];
+}
+
+interface UserPlansResponse {
+  active_plans: UserPlan[];
+  closed_plans: UserPlan[];
+}
+
+interface CurrentPlanResponse {
+  has_active_subscription: boolean;
+  current_plan_name: string;
+  token_balance: number;
+  plan_expired?: boolean;
+  tokens_remaining_in_plan?: number;
+}
+
+interface CreateSubscriptionResponse {
+  new_token_balance: number;
+  existing_subscription?: {
+    plan_name: string;
+    tokens_remaining: number;
+  };
+}
+
 class APIClient {
   private baseURL: string;
 
@@ -136,20 +185,20 @@ class APIClient {
   }
 
   // Plans
-  async getPlans() {
-    return this.request('/plans');
+  async getPlans(): Promise<APIResponse<PlansResponse>> {
+    return this.request<APIResponse<PlansResponse>>('/plans');
   }
 
-  async getUserPlans(userId: number) {
-    return this.request(`/user-plans?user_id=${userId}`);
+  async getUserPlans(userId: number): Promise<APIResponse<UserPlansResponse>> {
+    return this.request<APIResponse<UserPlansResponse>>(`/user-plans?user_id=${userId}`);
   }
 
   async createSubscription(data: {
     user_id: number;
     plan_id: number;
     payment_id?: string;
-  }) {
-    return this.request('/user-plans', {
+  }): Promise<APIResponse<CreateSubscriptionResponse>> {
+    return this.request<APIResponse<CreateSubscriptionResponse>>('/user-plans', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -204,8 +253,8 @@ class APIClient {
   }
 
   // User Current Plan
-  async getCurrentUserPlan(userId: number) {
-    return this.request(`/user-current-plan?user_id=${userId}`);
+  async getCurrentUserPlan(userId: number): Promise<APIResponse<CurrentPlanResponse>> {
+    return this.request<APIResponse<CurrentPlanResponse>>(`/user-current-plan?user_id=${userId}`);
   }
 
   // User Prompt Management
@@ -272,8 +321,8 @@ class APIClient {
   }
 
   // Admin - Plans Management
-  async getAllPlansForAdmin() {
-    return this.request('/admin/plans');
+  async getAllPlansForAdmin(): Promise<APIResponse<PlansResponse>> {
+    return this.request<APIResponse<PlansResponse>>('/admin/plans');
   }
 
   async createPlanAdmin(data: {
@@ -284,8 +333,8 @@ class APIClient {
     token_amount: number;
     features?: string[];
     is_active?: boolean;
-  }) {
-    return this.request('/admin/plans', {
+  }): Promise<APIResponse<Record<string, never>>> {
+    return this.request<APIResponse<Record<string, never>>>('/admin/plans', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -300,18 +349,21 @@ class APIClient {
     token_amount?: number;
     features?: string[];
     is_active?: boolean;
-  }) {
-    return this.request('/admin/plans', {
+  }): Promise<APIResponse<Record<string, never>>> {
+    return this.request<APIResponse<Record<string, never>>>('/admin/plans', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deletePlanAdmin(planId: number) {
-    return this.request(`/admin/plans?plan_id=${planId}`, {
+  async deletePlanAdmin(planId: number): Promise<APIResponse<Record<string, never>>> {
+    return this.request<APIResponse<Record<string, never>>>(`/admin/plans?plan_id=${planId}`, {
       method: 'DELETE',
     });
   }
 }
+
+// Export types for use in components
+export type { Plan, PlansResponse, UserPlan, UserPlansResponse, CurrentPlanResponse, CreateSubscriptionResponse };
 
 export const apiClient = new APIClient(API_BASE_URL);
