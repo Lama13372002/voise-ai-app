@@ -115,7 +115,7 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
         // Обновляем план пользователя с актуальными данными
         const currentPlanName = planData.data?.current_plan_name || 'Бесплатный план';
         const updatedData = {
-          ...result.data,
+          ...(result.data as PromptsData),
           userPlan: {
             plan_name: currentPlanName,
             plan_level: currentPlanName === 'Базовый' ? 1 :
