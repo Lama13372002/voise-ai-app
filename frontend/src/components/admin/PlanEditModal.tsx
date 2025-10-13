@@ -16,23 +16,12 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
-
-interface SubscriptionPlan {
-  id: number;
-  name: string;
-  description?: string;
-  price: string;
-  currency: string;
-  token_amount: number;
-  features: string[];
-  is_active: boolean;
-  created_at: string;
-}
+import { apiClient, type Plan } from '@/lib/api-client';
 
 interface PlanEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  plan: SubscriptionPlan | null;
+  plan: Plan | null;
   onSave: () => void;
 }
 
@@ -40,7 +29,7 @@ export default function PlanEditModal({ isOpen, onClose, plan, onSave }: PlanEdi
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    price: '',
+    price: 0,
     currency: 'USD',
     token_amount: 1000,
     features: [''],
@@ -64,7 +53,7 @@ export default function PlanEditModal({ isOpen, onClose, plan, onSave }: PlanEdi
       setFormData({
         name: '',
         description: '',
-        price: '',
+        price: 0,
         currency: 'USD',
         token_amount: 1000,
         features: [''],
@@ -81,7 +70,7 @@ export default function PlanEditModal({ isOpen, onClose, plan, onSave }: PlanEdi
       newErrors.name = 'Название плана обязательно';
     }
 
-    if (!formData.price || parseFloat(formData.price) < 0) {
+    if (formData.price < 0) {
       newErrors.price = 'Цена должна быть больше или равна 0';
     }
 
@@ -110,27 +99,43 @@ export default function PlanEditModal({ isOpen, onClose, plan, onSave }: PlanEdi
       // Фильтруем пустые возможности перед отправкой
       const validFeatures = formData.features.filter(f => f.trim());
 
-      const bodyData = {
-        ...formData,
-        features: validFeatures,
-        price: parseFloat(formData.price),
-        ...(plan && { id: plan.id })
-      };
+      if (plan) {
+        // Редактирование существующего плана
+        const response = await apiClient.updatePlanAdmin({
+          plan_id: plan.id,
+          name: formData.name,
+          description: formData.description || undefined,
+          price: formData.price,
+          currency: formData.currency,
+          token_amount: formData.token_amount,
+          features: validFeatures,
+          is_active: formData.is_active,
+        });
 
-      const response = await fetch('/api/admin/plans', {
-        method: plan ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bodyData),
-      });
-
-      if (response.ok) {
-        onSave();
-        onClose();
+        if (response.success) {
+          onSave();
+          onClose();
+        } else {
+          alert(response.error || 'Ошибка при сохранении плана');
+        }
       } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Ошибка при сохранении плана');
+        // Создание нового плана
+        const response = await apiClient.createPlanAdmin({
+          name: formData.name,
+          description: formData.description || undefined,
+          price: formData.price,
+          currency: formData.currency,
+          token_amount: formData.token_amount,
+          features: validFeatures,
+          is_active: formData.is_active,
+        });
+
+        if (response.success) {
+          onSave();
+          onClose();
+        } else {
+          alert(response.error || 'Ошибка при создании плана');
+        }
       }
     } catch (error) {
       console.error('Error saving plan:', error);
@@ -259,7 +264,7 @@ export default function PlanEditModal({ isOpen, onClose, plan, onSave }: PlanEdi
                       step="0.01"
                       min="0"
                       value={formData.price}
-                      onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
                       className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
                         errors.price ? 'border-red-300 bg-red-50 dark:bg-red-900/10' : 'border-slate-300 dark:border-slate-600'
                       }`}
