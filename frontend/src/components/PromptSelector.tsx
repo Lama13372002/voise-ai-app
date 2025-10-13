@@ -114,14 +114,18 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
       if (result.success && result.data) {
         // Обновляем план пользователя с актуальными данными
         const currentPlanName = planData.data?.current_plan_name || 'Бесплатный план';
+        const data = result.data as PromptsData;
         const updatedData = {
-          ...(result.data as PromptsData),
           userPlan: {
             plan_name: currentPlanName,
             plan_level: currentPlanName === 'Базовый' ? 1 :
                        currentPlanName === 'Премиум' ? 2 :
                        currentPlanName === 'Про' ? 3 : 1
-          }
+          },
+          basePrompts: Array.isArray(data.basePrompts) ? data.basePrompts : [],
+          userPrompts: Array.isArray(data.userPrompts) ? data.userPrompts : [],
+          selectedPromptId: data.selectedPromptId || null,
+          promptLimits: data.promptLimits || { current: 0, max: 0, canCreateMore: false }
         };
         setPrompts(updatedData);
       } else {
@@ -228,8 +232,8 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
   };
 
   const currentPrompt = prompts ?
-    [...prompts.basePrompts, ...prompts.userPrompts].find(p => p.id === prompts.selectedPromptId) ||
-    prompts.basePrompts[0]
+    [...(prompts.basePrompts || []), ...(prompts.userPrompts || [])].find(p => p.id === prompts.selectedPromptId) ||
+    (prompts.basePrompts && prompts.basePrompts[0])
     : null;
 
   return (
@@ -444,7 +448,7 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
                   )}
 
                   {/* Список пользовательских промптов */}
-                  {prompts.userPrompts.length > 0 ? (
+                  {prompts.userPrompts && prompts.userPrompts.length > 0 ? (
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {prompts.userPrompts.map((prompt) => {
                         const isSelected = prompt.id === prompts.selectedPromptId;
