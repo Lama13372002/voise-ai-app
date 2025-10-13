@@ -63,6 +63,13 @@ interface PlansResponse {
   plans: Plan[];
 }
 
+interface PlansAPIResponse {
+  success: boolean;
+  data?: PlansResponse;
+  error?: string;
+  message?: string;
+}
+
 interface UserPlan {
   id: number;
   plan_name: string;
@@ -185,8 +192,8 @@ class APIClient {
   }
 
   // Plans
-  async getPlans(): Promise<APIResponse<PlansResponse>> {
-    return this.request<APIResponse<PlansResponse>>('/plans');
+  async getPlans(): Promise<PlansAPIResponse> {
+    return this.request<PlansAPIResponse>('/plans');
   }
 
   async getUserPlans(userId: number): Promise<APIResponse<UserPlansResponse>> {
@@ -364,6 +371,6 @@ class APIClient {
 }
 
 // Export types for use in components
-export type { Plan, PlansResponse, UserPlan, UserPlansResponse, CurrentPlanResponse, CreateSubscriptionResponse };
+export type { Plan, PlansResponse, PlansAPIResponse, UserPlan, UserPlansResponse, CurrentPlanResponse, CreateSubscriptionResponse };
 
 export const apiClient = new APIClient(API_BASE_URL);
