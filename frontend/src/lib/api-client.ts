@@ -283,7 +283,7 @@ class APIClient {
     return this.request(`/user-voice?user_id=${userId}`);
   }
 
-  async updateUserVoice(data: { user_id: number; selected_voice: string }) {
+  async updateUserVoice(data: { user_id: number; voice: string }) {
     return this.request('/user-voice', {
       method: 'POST',
       body: JSON.stringify(data),
