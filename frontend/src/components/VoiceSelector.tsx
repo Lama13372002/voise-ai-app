@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, Crown, Lock, Volume2, User } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, type CurrentPlanResponse } from '@/lib/api-client';
 
 interface VoiceInfo {
   id: string;
@@ -158,8 +158,8 @@ export default function VoiceSelector({ user, tg, onVoiceChange }: VoiceSelector
       setLoadingPlan(true);
       const data = await apiClient.getCurrentUserPlan(user.id);
 
-      if (data.success) {
-        const planName = (data as any).current_plan_name || 'Бесплатный план';
+      if (data.success && data.data) {
+        const planName = data.data.current_plan_name || 'Бесплатный план';
         setCurrentPlanName(planName);
 
         // Определяем номер плана по имени
