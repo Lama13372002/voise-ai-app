@@ -225,7 +225,7 @@ class APIClient {
 
   async saveMessage(data: {
     user_id: number;
-    session_id?: string;
+    session_id?: number;
     message_type: string;
     content: string;
     audio_duration_seconds?: number;
