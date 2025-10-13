@@ -57,7 +57,9 @@ export default function TMAApp() {
         initMockTelegramWebApp();
       }
 
-      const telegram = window.Telegram.WebApp;
+      const telegram = window.Telegram?.WebApp;
+      if (!telegram) return;
+
       setTg(telegram);
 
       // Настраиваем тему и расширяем приложение
