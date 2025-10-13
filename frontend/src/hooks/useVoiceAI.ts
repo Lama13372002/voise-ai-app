@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useProximityDisabler } from './useProximityDisabler';
 import { useWebRTCAudioForcer } from './useWebRTCAudioForcer';
 import { useMediaManager } from './useMediaManager';
+import { apiClient } from '@/lib/api-client';
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'listening' | 'thinking' | 'speaking' | 'error' | 'reconnecting';
 
@@ -162,16 +163,12 @@ export function useVoiceAI(): UseVoiceAIReturn {
     }
 
     try {
-      await fetch('/api/conversation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userIdRef.current,
-          session_id: sessionIdRef.current,
-          message_type: role,
-          content: content.trim(),
-          audio_duration_seconds: 0
-        }),
+      await apiClient.saveMessage({
+        user_id: userIdRef.current,
+        session_id: sessionIdRef.current?.toString(),
+        message_type: role,
+        content: content.trim(),
+        audio_duration_seconds: 0
       });
     } catch (error) {
       // Игнорируем ошибки сохранения
@@ -181,11 +178,10 @@ export function useVoiceAI(): UseVoiceAIReturn {
   // Функция для проверки баланса токенов
   const checkTokenBalance = useCallback(async (userId: number): Promise<TokenCheckResult> => {
     try {
-      const response = await fetch(`/api/tokens?user_id=${userId}`);
-      const result = await response.json();
+      const result = await apiClient.getTokenBalance(userId);
 
-      if (response.ok && result.success) {
-        const balance = result.token_balance;
+      if (result.success && result.data) {
+        const balance = result.data.token_balance;
         setTokenBalance(balance);
         setCanConnect(balance > 2000);
         return {
@@ -220,23 +216,15 @@ export function useVoiceAI(): UseVoiceAIReturn {
     if (balance <= 0 || balance > 2000) return;
 
     try {
-      const response = await fetch('/api/tokens', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          session_id: `cleanup_${Date.now()}`,
-          usage: {
-            total_tokens: balance,
-            input_tokens: balance,
-            output_tokens: 0
-          }
-        }),
+      await apiClient.deductTokens({
+        user_id: userId,
+        session_id: `cleanup_${Date.now()}`,
+        usage: {
+          total_tokens: balance,
+          input_tokens: balance,
+          output_tokens: 0
+        }
       });
-
-      if (response.ok) {
-        // Успешно списали, но не уведомляем пользователя
-      }
     } catch (error) {
       // Игнорируем ошибки при списании оставшихся токенов
     }
@@ -263,31 +251,25 @@ export function useVoiceAI(): UseVoiceAIReturn {
         return;
       }
 
-      const response = await fetch('/api/tokens', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userIdRef.current,
-          session_id: sessionId,
-          usage: usage
-        }),
+      const result = await apiClient.deductTokens({
+        user_id: userIdRef.current,
+        session_id: sessionId,
+        usage: usage
       });
 
-      const result = await response.json();
-
-      if (response.ok && result.success) {
+      if (result.success && result.data) {
         // Проверяем новый баланс после списания
-        if (result.new_balance <= 2000) {
+        if (result.data.new_balance <= 2000) {
           // Если баланс стал ≤2000, списываем остаток и завершаем
-          if (result.new_balance > 0) {
-            await deductRemainingTokens(userIdRef.current, result.new_balance);
+          if (result.data.new_balance > 0) {
+            await deductRemainingTokens(userIdRef.current, result.data.new_balance);
           }
 
           setError('Токены закончились. Приобретите подписку для продолжения.');
           cleanupConnection();
         }
       } else {
-        if (result.error === 'Недостаточно токенов') {
+        if (result.error === 'Недостаточно токенов' || result.error === 'Insufficient tokens') {
           setError('Недостаточно токенов для продолжения. Приобретите подписку для дальнейшего использования.');
           cleanupConnection();
         }
@@ -373,11 +355,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
         }
       }
       // Получаем токен от нашего API с user_id для контекста
-      const tokenUrl = userId ? `/api/token?user_id=${userId}` : '/api/token';
-      const tokenResp = await fetch(tokenUrl);
-      if (!tokenResp.ok) throw new Error('Не удалось получить токен');
-
-      const tokenData = await tokenResp.json();
+      const tokenData = await apiClient.getOpenAIToken(userId);
       const ephemeralKey = tokenData.client_secret?.value || tokenData.value;
 
       if (!ephemeralKey) {
@@ -706,10 +684,9 @@ export function useVoiceAI(): UseVoiceAIReturn {
       let selectedModel = 'gpt-realtime';
       if (userId) {
         try {
-          const userResponse = await fetch(`/api/users?user_id=${userId}`);
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            selectedModel = userData.user?.selected_model || 'gpt-realtime';
+          const userData = await apiClient.getUser({ user_id: userId });
+          if (userData.success && userData.data) {
+            selectedModel = userData.data.user?.selected_model || 'gpt-realtime';
           }
         } catch (e) {
           console.error('Ошибка получения модели пользователя:', e);
@@ -757,7 +734,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
         localStreamRef.current = null;
       }
     }
-  }, [saveMessage, deductTokens, checkTokenBalance, deductRemainingTokens, enforceMainSpeaker, initializeProximityDisabler, configureRTCForSpeaker, forceAudioToSpeaker, createSpeakerAudioContext, reconnectAttempts, maxReconnectAttempts, attemptReconnect, getMediaStream, interruptPlayback]);
+  }, [saveMessage, checkTokenBalance, deductRemainingTokens, enforceMainSpeaker, initializeProximityDisabler, configureRTCForSpeaker, forceAudioToSpeaker, createSpeakerAudioContext, reconnectAttempts, maxReconnectAttempts, attemptReconnect, getMediaStream, interruptPlayback]);
 
   // Устанавливаем ссылку на функцию в ref
   connectInternalRef.current = connectInternal;
