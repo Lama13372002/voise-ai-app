@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { User, Clock, Crown, Zap, Activity } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
 import PlanModal from '@/components/PlanModal';
+import { apiClient, type CurrentPlanResponse } from '@/lib/api-client';
 
 interface UserData {
   id: number;
@@ -19,13 +20,7 @@ interface UserData {
   current_plan_name?: string;
 }
 
-interface CurrentPlanData {
-  has_active_subscription: boolean;
-  current_plan_name: string;
-  token_balance: number;
-  plan_expired?: boolean;
-  tokens_remaining_in_plan?: number;
-}
+// Using CurrentPlanResponse from api-client instead of local interface
 
 interface ProfilePageProps {
   user: UserData | null;
@@ -35,19 +30,23 @@ interface ProfilePageProps {
 
 export default function ProfilePage({ user, tg, onUserUpdate }: ProfilePageProps) {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<CurrentPlanData | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<CurrentPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchCurrentPlan = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/user-current-plan?user_id=${user?.id}`);
-      const data = await response.json();
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
 
-      if (data.success) {
-        setCurrentPlan(data);
+    try {
+      const response = await apiClient.getCurrentUserPlan(user.id);
+
+      if (response.success && response.data) {
+        setCurrentPlan(response.data);
 
         // Показываем уведомление если план истек
-        if (data.plan_expired) {
+        if (response.data.plan_expired) {
           tg?.showAlert('Ваш план завершен - все токены использованы. План перемещен в завершенные.');
         }
       }
