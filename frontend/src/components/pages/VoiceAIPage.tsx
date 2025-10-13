@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import VoiceSelector from '@/components/VoiceSelector';
 import PromptSelector from '@/components/PromptSelector';
 import ModelSelector from '@/components/ModelSelector';
+import { apiClient } from '@/lib/api-client';
 
 interface UserData {
   id: number;
@@ -38,13 +39,14 @@ export default function VoiceAIPage({ user, tg, onUserUpdate }: VoiceAIPageProps
   const [selectedVoice, setSelectedVoice] = useState<string>(user?.selected_voice || 'ash');
 
   const fetchTokenBalance = useCallback(async () => {
+    if (!user?.id) return;
+
     try {
       setLoadingTokens(true);
-      const response = await fetch(`/api/tokens?user_id=${user?.id}`);
-      const data = await response.json();
+      const data = await apiClient.getTokenBalance(user.id);
 
-      if (data.success) {
-        setTokenBalance(data.token_balance);
+      if (data.success && data.data) {
+        setTokenBalance(data.data.token_balance);
       }
     } catch (error) {
       console.error('Error fetching token balance:', error);
