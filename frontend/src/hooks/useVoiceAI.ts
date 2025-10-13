@@ -165,7 +165,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
     try {
       await apiClient.saveMessage({
         user_id: userIdRef.current,
-        session_id: sessionIdRef.current?.toString(),
+        session_id: sessionIdRef.current ?? undefined,
         message_type: role,
         content: content.trim(),
         audio_duration_seconds: 0
