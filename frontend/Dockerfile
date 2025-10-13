@@ -31,8 +31,8 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/bun.lock* ./
 
-# Install only production dependencies
-RUN bun install --production
+# Install only production dependencies without frozen lockfile
+RUN bun install --production --no-frozen-lockfile
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
