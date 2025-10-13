@@ -7,14 +7,12 @@ RUN apk add --no-cache git
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files
+# Copy go mod and source files
 COPY go.mod ./
-
-# Download dependencies (this will create go.sum)
-RUN go mod download
-
-# Copy source code
 COPY . .
+
+# Tidy and download dependencies (this will create go.sum)
+RUN go mod tidy && go mod download
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o voice-ai-server cmd/server/main.go
