@@ -229,7 +229,7 @@ export default function VoiceSelector({ user, tg, onVoiceChange }: VoiceSelector
     try {
       const result = await apiClient.updateUserVoice({
         user_id: user.id,
-        selected_voice: voiceId
+        voice: voiceId
       });
 
       if (result.success) {
