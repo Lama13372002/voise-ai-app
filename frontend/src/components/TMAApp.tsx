@@ -106,9 +106,30 @@ export default function TMAApp() {
 
       if (result.success && result.data) {
         setUser(result.data.user);
+      } else {
+        // Если API не вернул данные, используем локального пользователя
+        setUser({
+          id: 0,
+          telegram_id: telegramUser.id.toString(),
+          username: telegramUser.username,
+          first_name: telegramUser.first_name,
+          last_name: telegramUser.last_name,
+          is_premium: false,
+          token_balance: 1000,
+        });
       }
     } catch (error) {
       console.error('Error registering user:', error);
+      // При ошибке создаем локального тестового пользователя
+      setUser({
+        id: 0,
+        telegram_id: telegramUser.id.toString(),
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+        is_premium: false,
+        token_balance: 1000,
+      });
     } finally {
       setLoading(false);
     }
