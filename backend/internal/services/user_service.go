@@ -7,6 +7,7 @@ import (
 	"voice-ai-backend/internal/models"
 
 	"github.com/jackc/pgx/v5"
+	log "github.com/sirupsen/logrus"
 )
 
 type UserService struct{}
