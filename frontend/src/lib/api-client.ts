@@ -103,6 +103,13 @@ interface CreateSubscriptionResponse {
   };
 }
 
+interface OpenAITokenResponse {
+  client_secret?: {
+    value: string;
+  };
+  value?: string;
+}
+
 class APIClient {
   private baseURL: string;
 
@@ -249,9 +256,9 @@ class APIClient {
   }
 
   // OpenAI Token
-  async getOpenAIToken(userId?: number): Promise<APIResponse> {
+  async getOpenAIToken(userId?: number): Promise<APIResponse<OpenAITokenResponse>> {
     const query = userId ? `?user_id=${userId}` : '';
-    return this.request<APIResponse>(`/token${query}`);
+    return this.request<APIResponse<OpenAITokenResponse>>(`/token${query}`);
   }
 
   // Health Check
@@ -371,6 +378,6 @@ class APIClient {
 }
 
 // Export types for use in components
-export type { Plan, PlansResponse, PlansAPIResponse, UserPlan, UserPlansResponse, CurrentPlanResponse, CreateSubscriptionResponse };
+export type { Plan, PlansResponse, PlansAPIResponse, UserPlan, UserPlansResponse, CurrentPlanResponse, CreateSubscriptionResponse, OpenAITokenResponse };
 
 export const apiClient = new APIClient(API_BASE_URL);
