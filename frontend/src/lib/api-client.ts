@@ -265,26 +265,26 @@ class APIClient {
   }
 
   // User Prompt Management
-  async selectPrompt(data: { user_id: number; prompt_id: number }) {
-    return this.request('/user-prompt', {
+  async selectPrompt(data: { user_id: number; prompt_id: number }): Promise<APIResponse> {
+    return this.request<APIResponse>('/user-prompt', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async deletePrompt(userId: number, promptId: number) {
-    return this.request(`/user-prompt?user_id=${userId}&prompt_id=${promptId}`, {
+  async deletePrompt(userId: number, promptId: number): Promise<APIResponse> {
+    return this.request<APIResponse>(`/user-prompt?user_id=${userId}&prompt_id=${promptId}`, {
       method: 'DELETE',
     });
   }
 
   // User Voice Selection
-  async getUserVoice(userId: number) {
-    return this.request(`/user-voice?user_id=${userId}`);
+  async getUserVoice(userId: number): Promise<APIResponse> {
+    return this.request<APIResponse>(`/user-voice?user_id=${userId}`);
   }
 
-  async updateUserVoice(data: { user_id: number; voice: string }) {
-    return this.request('/user-voice', {
+  async updateUserVoice(data: { user_id: number; voice: string }): Promise<APIResponse> {
+    return this.request<APIResponse>('/user-voice', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -296,15 +296,15 @@ class APIClient {
     activity_type: string;
     description?: string;
     metadata?: Record<string, unknown>;
-  }) {
-    return this.request('/user-activity', {
+  }): Promise<APIResponse> {
+    return this.request<APIResponse>('/user-activity', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async getUserActivities(userId: number, limit = 50) {
-    return this.request(`/user-activity?user_id=${userId}&limit=${limit}`);
+  async getUserActivities(userId: number, limit = 50): Promise<APIResponse> {
+    return this.request<APIResponse>(`/user-activity?user_id=${userId}&limit=${limit}`);
   }
 
   // Voice Sessions
@@ -312,19 +312,19 @@ class APIClient {
     user_id: number;
     session_type?: string;
     metadata?: Record<string, unknown>;
-  }) {
-    return this.request('/voice-sessions', {
+  }): Promise<APIResponse> {
+    return this.request<APIResponse>('/voice-sessions', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async getUserVoiceSessions(userId: number, limit = 20) {
-    return this.request(`/voice-sessions?user_id=${userId}&limit=${limit}`);
+  async getUserVoiceSessions(userId: number, limit = 20): Promise<APIResponse> {
+    return this.request<APIResponse>(`/voice-sessions?user_id=${userId}&limit=${limit}`);
   }
 
-  async getSessionStats(userId: number) {
-    return this.request(`/voice-sessions/stats?user_id=${userId}`);
+  async getSessionStats(userId: number): Promise<APIResponse> {
+    return this.request<APIResponse>(`/voice-sessions/stats?user_id=${userId}`);
   }
 
   // Admin - Plans Management
