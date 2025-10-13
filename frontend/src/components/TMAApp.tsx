@@ -7,6 +7,7 @@ import VoiceAIPage from './pages/VoiceAIPage';
 import ProfilePage from './pages/ProfilePage';
 import PlansPage from './pages/PlansPage';
 import SettingsPage from './pages/SettingsPage';
+import { apiClient } from '@/lib/api-client';
 
 type Page = 'voice' | 'profile' | 'plans' | 'settings';
 
@@ -35,12 +36,11 @@ export default function TMAApp() {
 
     try {
       setRefreshing(true);
-      const response = await fetch(`/api/users?telegram_id=${user.telegram_id}`);
+      const result = await apiClient.getUser({ telegram_id: user.telegram_id });
 
-      if (response.ok) {
-        const { user: updatedUserData } = await response.json();
-        setUser(updatedUserData);
-        console.log('User data refreshed:', updatedUserData);
+      if (result.success && result.data) {
+        setUser(result.data.user);
+        console.log('User data refreshed:', result.data.user);
       }
     } catch (error) {
       console.error('Error refreshing user data:', error);
@@ -88,21 +88,16 @@ export default function TMAApp() {
 
   const registerUser = async (telegramUser: NonNullable<TelegramUser>) => {
     try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegram_id: telegramUser.id.toString(),
-          username: telegramUser.username,
-          first_name: telegramUser.first_name,
-          last_name: telegramUser.last_name,
-          language_code: telegramUser.language_code,
-        }),
+      const result = await apiClient.createOrUpdateUser({
+        telegram_id: telegramUser.id.toString(),
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+        language_code: telegramUser.language_code,
       });
 
-      if (response.ok) {
-        const { user: userData } = await response.json();
-        setUser(userData);
+      if (result.success && result.data) {
+        setUser(result.data.user);
       }
     } catch (error) {
       console.error('Error registering user:', error);
