@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Crown, Check, Zap, Star, Sparkles, Clock, Headphones, BarChart3, Infinity, Diamond, Rocket, Coins, MessageCircle } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, type PlansAPIResponse, type CreateSubscriptionResponse } from '@/lib/api-client';
 
 interface UserData {
   id: number;
@@ -45,8 +45,8 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
   const fetchPlans = async () => {
     try {
       const result = await apiClient.getPlans();
-      if (result.success && (result as any).plans) {
-        setPlans((result as any).plans);
+      if (result.success && result.data?.plans) {
+        setPlans(result.data.plans);
       }
     } catch (error) {
       console.error('Error fetching plans:', error);
@@ -116,11 +116,11 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
         payment_id: `simulate_${Date.now()}` // Симуляция ID платежа
       });
 
-      if (subscriptionResult.success) {
+      if (subscriptionResult.success && subscriptionResult.data) {
         // Обновляем баланс токенов локально
-        setTokenBalance((subscriptionResult as any).new_token_balance);
+        setTokenBalance(subscriptionResult.data.new_token_balance);
 
-        tg?.showAlert(`Успешно! План "${plan.name}" активирован. Добавлено ${formatTokenAmount(plan.token_amount)} токенов. Новый баланс: ${formatTokenAmount((subscriptionResult as any).new_token_balance)}`);
+        tg?.showAlert(`Успешно! План "${plan.name}" активирован. Добавлено ${formatTokenAmount(plan.token_amount)} токенов. Новый баланс: ${formatTokenAmount(subscriptionResult.data.new_token_balance)}`);
 
         // Обновляем данные пользователя для синхронизации с базой данных
         if (onUserUpdate) {
@@ -134,8 +134,8 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
         }, 1000);
       } else {
         // Проверяем, есть ли информация о существующей подписке
-        if ((subscriptionResult as any).existing_subscription) {
-          const existingSub = (subscriptionResult as any).existing_subscription;
+        if (subscriptionResult.data?.existing_subscription) {
+          const existingSub = subscriptionResult.data.existing_subscription;
           tg?.showAlert(`У вас уже есть активная подписка "${existingSub.plan_name}" с ${formatTokenAmount(existingSub.tokens_remaining)} неиспользованными токенами. Сначала используйте текущую подписку.`);
         } else {
           tg?.showAlert(`Ошибка при создании подписки: ${subscriptionResult.error || 'Неизвестная ошибка'}`);
