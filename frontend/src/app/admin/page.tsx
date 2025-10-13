@@ -370,7 +370,7 @@ export default function AdminPage() {
 
                   {/* Дата создания */}
                   <p className="text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
-                    Создан: {new Date(plan.created_at).toLocaleDateString('ru-RU')}
+                    Создан: {plan.created_at ? new Date(plan.created_at).toLocaleDateString('ru-RU') : 'Н/Д'}
                   </p>
                 </CardContent>
               </Card>
