@@ -22,23 +22,12 @@ import {
   X
 } from 'lucide-react';
 import PlanEditModal from '@/components/admin/PlanEditModal';
-
-interface SubscriptionPlan {
-  id: number;
-  name: string;
-  description?: string;
-  price: string;
-  currency: string;
-  token_amount: number;
-  features: string[];
-  is_active: boolean;
-  created_at: string;
-}
+import { apiClient, type Plan } from '@/lib/api-client';
 
 export default function AdminPage() {
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -47,10 +36,9 @@ export default function AdminPage() {
 
   const fetchPlans = async () => {
     try {
-      const response = await fetch('/api/admin/plans');
-      if (response.ok) {
-        const { plans: plansData } = await response.json();
-        setPlans(plansData);
+      const response = await apiClient.getAllPlansForAdmin();
+      if (response.success && response.data?.plans) {
+        setPlans(response.data.plans);
       }
     } catch (error) {
       console.error('Error fetching plans:', error);
@@ -59,7 +47,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleEdit = (plan: SubscriptionPlan) => {
+  const handleEdit = (plan: Plan) => {
     setEditingPlan(plan);
     setIsModalOpen(true);
   };
@@ -75,14 +63,12 @@ export default function AdminPage() {
     }
 
     try {
-      const response = await fetch(`/api/admin/plans?id=${id}`, {
-        method: 'DELETE',
-      });
+      const response = await apiClient.deletePlanAdmin(id);
 
-      if (response.ok) {
+      if (response.success) {
         await fetchPlans();
       } else {
-        alert('Ошибка при удалении плана');
+        alert(`Ошибка при удалении плана: ${response.error || 'Неизвестная ошибка'}`);
       }
     } catch (error) {
       console.error('Error deleting plan:', error);
@@ -90,23 +76,17 @@ export default function AdminPage() {
     }
   };
 
-  const togglePlanStatus = async (plan: SubscriptionPlan) => {
+  const togglePlanStatus = async (plan: Plan) => {
     try {
-      const response = await fetch('/api/admin/plans', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...plan,
-          is_active: !plan.is_active,
-        }),
+      const response = await apiClient.updatePlanAdmin({
+        plan_id: plan.id,
+        is_active: !plan.is_active,
       });
 
-      if (response.ok) {
+      if (response.success) {
         await fetchPlans();
       } else {
-        alert('Ошибка при изменении статуса плана');
+        alert(`Ошибка при изменении статуса плана: ${response.error || 'Неизвестная ошибка'}`);
       }
     } catch (error) {
       console.error('Error toggling plan status:', error);
@@ -251,7 +231,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                      ${Math.round(plans.reduce((sum, p) => sum + parseFloat(p.price), 0))}
+                      ${Math.round(plans.reduce((sum, p) => sum + p.price, 0))}
                     </p>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                       Сумма цен
