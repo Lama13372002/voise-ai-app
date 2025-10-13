@@ -17,7 +17,7 @@ import {
   Zap
 } from 'lucide-react';
 import type { TelegramWebApp, TelegramUser } from '@/types/telegram';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, type UserPlansResponse } from '@/lib/api-client';
 
 interface UserPlan {
   id: number;
@@ -55,9 +55,9 @@ export default function PlanModal({ isOpen, onClose, user, tg }: PlanModalProps)
     try {
       const data = await apiClient.getUserPlans(user.id);
 
-      if (data.success) {
-        setActivePlans((data as any).active_plans || []);
-        setClosedPlans((data as any).closed_plans || []);
+      if (data.success && data.data) {
+        setActivePlans(data.data.active_plans || []);
+        setClosedPlans(data.data.closed_plans || []);
       } else {
         console.error('Error fetching plans:', data.error);
         // Fallback to empty arrays if API fails
