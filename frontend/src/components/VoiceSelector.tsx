@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, Crown, Lock, Volume2, User } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
+import { apiClient } from '@/lib/api-client';
 
 interface VoiceInfo {
   id: string;
@@ -155,11 +156,10 @@ export default function VoiceSelector({ user, tg, onVoiceChange }: VoiceSelector
 
     try {
       setLoadingPlan(true);
-      const response = await fetch(`/api/user-current-plan?user_id=${user.id}`);
-      const data = await response.json();
+      const data = await apiClient.getCurrentUserPlan(user.id);
 
       if (data.success) {
-        const planName = data.current_plan_name || 'Бесплатный план';
+        const planName = (data as any).current_plan_name || 'Бесплатный план';
         setCurrentPlanName(planName);
 
         // Определяем номер плана по имени
@@ -227,16 +227,12 @@ export default function VoiceSelector({ user, tg, onVoiceChange }: VoiceSelector
 
     setUpdating(true);
     try {
-      const response = await fetch('/api/user-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          voice: voiceId
-        })
+      const result = await apiClient.updateUserVoice({
+        user_id: user.id,
+        selected_voice: voiceId
       });
 
-      if (response.ok) {
+      if (result.success) {
         setSelectedVoice(voiceId);
         setIsOpen(false);
         onVoiceChange?.(voiceId);
