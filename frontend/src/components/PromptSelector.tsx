@@ -113,13 +113,14 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
 
       if (result.success && result.data) {
         // Обновляем план пользователя с актуальными данными
+        const currentPlanName = planData.data?.current_plan_name || 'Бесплатный план';
         const updatedData = {
           ...result.data,
           userPlan: {
-            plan_name: planData.current_plan_name || 'Бесплатный план',
-            plan_level: planData.current_plan_name === 'Базовый' ? 1 :
-                       planData.current_plan_name === 'Премиум' ? 2 :
-                       planData.current_plan_name === 'Про' ? 3 : 1
+            plan_name: currentPlanName,
+            plan_level: currentPlanName === 'Базовый' ? 1 :
+                       currentPlanName === 'Премиум' ? 2 :
+                       currentPlanName === 'Про' ? 3 : 1
           }
         };
         setPrompts(updatedData);
