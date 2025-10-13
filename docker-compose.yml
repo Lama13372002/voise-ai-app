@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: voice-ai-postgres
+    environment:
+      POSTGRES_USER: voiceai
+      POSTGRES_PASSWORD: voiceai_password
+      POSTGRES_DB: voice_ai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voiceai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - voice-ai-network
+
+  # Go Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voice-ai-backend
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://voiceai:voiceai_password@postgres:5432/voice_ai_db?sslmode=disable
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_REALTIME_URL: https://api.openai.com/v1/realtime/client_secrets
+      ALLOWED_ORIGINS: http://localhost:3000,http://frontend:3000
+      DEFAULT_TOKEN_BALANCE: 1000
+      MIN_TOKEN_THRESHOLD: 2000
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - voice-ai-network
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api
+    container_name: voice-ai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api
+    depends_on:
+      - backend
+    networks:
+      - voice-ai-network
+    restart: unless-stopped
+
+networks:
+  voice-ai-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
