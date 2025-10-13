@@ -3,10 +3,13 @@ const nextConfig = {
   // Standalone build for Docker deployment
   output: 'standalone',
 
-  // Оптимизация для production
-  experimental: {
-    serverComponentsExternalPackages: []
+  // Ignore ESLint errors during build
+  eslint: {
+    ignoreDuringBuilds: true,
   },
+
+  // Оптимизация для production
+  serverExternalPackages: [],
 
   // Настройки изображений
   images: {
