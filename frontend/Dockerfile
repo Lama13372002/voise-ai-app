@@ -12,9 +12,16 @@ RUN bun install
 # Copy source code
 COPY . .
 
-# Build argument for API URL
+# Build arguments - Railway automatically passes env vars as build args
 ARG NEXT_PUBLIC_API_URL
+ARG NODE_ENV=production
+
+# Set environment variables for build
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NODE_ENV=$NODE_ENV
+
+# Debug: Print the API URL (will show in build logs)
+RUN echo "Building with NEXT_PUBLIC_API_URL: $NEXT_PUBLIC_API_URL"
 
 # Build the application
 RUN bun run build
