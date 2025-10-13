@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Check, Lock, Plus, Trash2, Edit, Brain, Sparkles } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
+import { apiClient } from '@/lib/api-client';
 
 interface PromptInfo {
   id: number;
@@ -101,21 +102,19 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
       setLoading(true);
 
       // Сначала получаем текущий план пользователя
-      const planResponse = await fetch(`/api/user-current-plan?user_id=${user.id}`);
-      const planData = await planResponse.json();
+      const planData = await apiClient.getCurrentUserPlan(user.id);
 
       if (!planData.success) {
         console.error('Error fetching user plan:', planData.error);
         return;
       }
 
-      const response = await fetch(`/api/prompts?user_id=${user.id}`);
-      const data = await response.json();
+      const result = await apiClient.getPrompts(user.id);
 
-      if (data.success) {
+      if (result.success && result.data) {
         // Обновляем план пользователя с актуальными данными
         const updatedData = {
-          ...data.data,
+          ...result.data,
           userPlan: {
             plan_name: planData.current_plan_name || 'Бесплатный план',
             plan_level: planData.current_plan_name === 'Базовый' ? 1 :
@@ -125,7 +124,7 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
         };
         setPrompts(updatedData);
       } else {
-        console.error('Error fetching prompts:', data.error);
+        console.error('Error fetching prompts:', result.error);
       }
     } catch (error) {
       console.error('Error fetching prompts:', error);
@@ -152,23 +151,18 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
     if (!user?.id) return;
 
     try {
-      const response = await fetch('/api/user-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          prompt_id: promptId
-        })
+      const result = await apiClient.selectPrompt({
+        user_id: user.id,
+        prompt_id: promptId
       });
 
-      if (response.ok) {
+      if (result.success) {
         setPrompts(prev => prev ? { ...prev, selectedPromptId: promptId } : null);
         onPromptChange?.(promptId);
         tg?.HapticFeedback.impactOccurred('light');
         tg?.showAlert('Промпт успешно выбран!');
       } else {
-        const error = await response.json();
-        tg?.showAlert(error.error || 'Ошибка выбора промпта');
+        tg?.showAlert(result.error || 'Ошибка выбора промпта');
       }
     } catch (error) {
       console.error('Error selecting prompt:', error);
@@ -183,16 +177,16 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
     }
 
     try {
-      const response = await fetch('/api/prompts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          ...newPrompt
-        })
+      const result = await apiClient.createPrompt({
+        user_id: user.id,
+        title: newPrompt.title,
+        description: newPrompt.description,
+        content: newPrompt.content,
+        category: newPrompt.category,
+        voice_gender: newPrompt.voice_gender
       });
 
-      if (response.ok) {
+      if (result.success) {
         setNewPrompt({
           title: '',
           description: '',
@@ -205,8 +199,7 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
         tg?.HapticFeedback.impactOccurred('medium');
         tg?.showAlert('Промпт успешно создан!');
       } else {
-        const error = await response.json();
-        tg?.showAlert(error.error || 'Ошибка создания промпта');
+        tg?.showAlert(result.error || 'Ошибка создания промпта');
       }
     } catch (error) {
       console.error('Error creating prompt:', error);
@@ -218,17 +211,14 @@ export default function PromptSelector({ user, tg, onPromptChange }: PromptSelec
     if (!user?.id) return;
 
     try {
-      const response = await fetch(`/api/user-prompt?user_id=${user.id}&prompt_id=${promptId}`, {
-        method: 'DELETE'
-      });
+      const result = await apiClient.deletePrompt(user.id, promptId);
 
-      if (response.ok) {
+      if (result.success) {
         fetchPrompts();
         tg?.HapticFeedback.impactOccurred('light');
         tg?.showAlert('Промпт удален');
       } else {
-        const error = await response.json();
-        tg?.showAlert(error.error || 'Ошибка удаления промпта');
+        tg?.showAlert(result.error || 'Ошибка удаления промпта');
       }
     } catch (error) {
       console.error('Error deleting prompt:', error);
