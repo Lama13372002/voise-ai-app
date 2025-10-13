@@ -356,7 +356,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
       }
       // Получаем токен от нашего API с user_id для контекста
       const tokenData = await apiClient.getOpenAIToken(userId);
-      const ephemeralKey = tokenData.client_secret?.value || tokenData.value;
+      const ephemeralKey = tokenData.data?.client_secret?.value || tokenData.data?.value;
 
       if (!ephemeralKey) {
         throw new Error('Токен не найден в ответе сервера');
