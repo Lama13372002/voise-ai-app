@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"voice-ai-backend/internal/database"
 	"voice-ai-backend/internal/models"
+
+	"github.com/jackc/pgx/v5"
+	log "github.com/sirupsen/logrus"
 )
 
 type PlanService struct{}
@@ -46,8 +49,6 @@ func (s *PlanService) GetAllPlans(ctx context.Context) ([]models.SubscriptionPla
 
 // GetUserPlans получает планы пользователя (активные и закрытые)
 func (s *PlanService) GetUserPlans(ctx context.Context, userID int) (*models.UserPlansResponse, error) {
-	conn := database.Database.Pool
-
 	// Получаем активные планы
 	activePlans, err := s.getUserPlansByStatus(ctx, userID, []string{"active"})
 	if err != nil {
