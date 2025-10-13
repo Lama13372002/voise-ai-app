@@ -538,11 +538,11 @@ func (h *Handlers) UpdatePlanAdmin(c *gin.Context) {
 }
 
 func (h *Handlers) DeletePlanAdmin(c *gin.Context) {
-	planIDStr := c.Query("id")
+	planIDStr := c.Query("plan_id")
 	if planIDStr == "" {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
-			Error:   "id parameter is required",
+			Error:   "plan_id parameter is required",
 		})
 		return
 	}
