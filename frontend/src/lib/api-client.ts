@@ -72,8 +72,8 @@ class APIClient {
       total_tokens: number;
       input_tokens: number;
       output_tokens: number;
-      input_token_details?: any;
-      output_token_details?: any;
+      input_token_details?: Record<string, unknown>;
+      output_token_details?: Record<string, unknown>;
     };
     check_only?: boolean;
   }) {
@@ -151,6 +151,121 @@ class APIClient {
   async getOpenAIToken(userId?: number) {
     const query = userId ? `?user_id=${userId}` : '';
     return this.request(`/token${query}`);
+  }
+
+  // Health Check
+  async healthCheck() {
+    return this.request('/health');
+  }
+
+  // User Current Plan
+  async getCurrentUserPlan(userId: number) {
+    return this.request(`/user-current-plan?user_id=${userId}`);
+  }
+
+  // User Prompt Management
+  async selectPrompt(data: { user_id: number; prompt_id: number }) {
+    return this.request('/user-prompt', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePrompt(userId: number, promptId: number) {
+    return this.request(`/user-prompt?user_id=${userId}&prompt_id=${promptId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // User Voice Selection
+  async getUserVoice(userId: number) {
+    return this.request(`/user-voice?user_id=${userId}`);
+  }
+
+  async updateUserVoice(data: { user_id: number; selected_voice: string }) {
+    return this.request('/user-voice', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // User Activity
+  async logActivity(data: {
+    user_id: number;
+    activity_type: string;
+    description?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.request('/user-activity', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getUserActivities(userId: number, limit = 50) {
+    return this.request(`/user-activity?user_id=${userId}&limit=${limit}`);
+  }
+
+  // Voice Sessions
+  async createVoiceSession(data: {
+    user_id: number;
+    session_type?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.request('/voice-sessions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getUserVoiceSessions(userId: number, limit = 20) {
+    return this.request(`/voice-sessions?user_id=${userId}&limit=${limit}`);
+  }
+
+  async getSessionStats(userId: number) {
+    return this.request(`/voice-sessions/stats?user_id=${userId}`);
+  }
+
+  // Admin - Plans Management
+  async getAllPlansForAdmin() {
+    return this.request('/admin/plans');
+  }
+
+  async createPlanAdmin(data: {
+    name: string;
+    description?: string;
+    price: number;
+    currency: string;
+    token_amount: number;
+    features?: string[];
+    is_active?: boolean;
+  }) {
+    return this.request('/admin/plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePlanAdmin(data: {
+    plan_id: number;
+    name?: string;
+    description?: string;
+    price?: number;
+    currency?: string;
+    token_amount?: number;
+    features?: string[];
+    is_active?: boolean;
+  }) {
+    return this.request('/admin/plans', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePlanAdmin(planId: number) {
+    return this.request(`/admin/plans?plan_id=${planId}`, {
+      method: 'DELETE',
+    });
   }
 }
 
