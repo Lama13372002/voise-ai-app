@@ -230,8 +230,8 @@ class APIClient {
   }
 
   // Prompts
-  async getPrompts(userId: number) {
-    return this.request(`/prompts?user_id=${userId}`);
+  async getPrompts(userId: number): Promise<APIResponse> {
+    return this.request<APIResponse>(`/prompts?user_id=${userId}`);
   }
 
   async createPrompt(data: {
@@ -241,22 +241,22 @@ class APIClient {
     content: string;
     category?: string;
     voice_gender?: string;
-  }) {
-    return this.request('/prompts', {
+  }): Promise<APIResponse> {
+    return this.request<APIResponse>('/prompts', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   // OpenAI Token
-  async getOpenAIToken(userId?: number) {
+  async getOpenAIToken(userId?: number): Promise<APIResponse> {
     const query = userId ? `?user_id=${userId}` : '';
-    return this.request(`/token${query}`);
+    return this.request<APIResponse>(`/token${query}`);
   }
 
   // Health Check
-  async healthCheck() {
-    return this.request('/health');
+  async healthCheck(): Promise<APIResponse> {
+    return this.request<APIResponse>('/health');
   }
 
   // User Current Plan
