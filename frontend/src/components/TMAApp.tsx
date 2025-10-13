@@ -8,6 +8,7 @@ import ProfilePage from './pages/ProfilePage';
 import PlansPage from './pages/PlansPage';
 import SettingsPage from './pages/SettingsPage';
 import { apiClient } from '@/lib/api-client';
+import { initMockTelegramWebApp } from '@/lib/telegram-mock';
 
 type Page = 'voice' | 'profile' | 'plans' | 'settings';
 
@@ -50,7 +51,12 @@ export default function TMAApp() {
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+    if (typeof window !== 'undefined') {
+      // Инициализируем мок если не в Telegram
+      if (!window.Telegram?.WebApp) {
+        initMockTelegramWebApp();
+      }
+
       const telegram = window.Telegram.WebApp;
       setTg(telegram);
 
