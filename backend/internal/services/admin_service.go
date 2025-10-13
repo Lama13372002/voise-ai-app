@@ -80,7 +80,7 @@ func (s *AdminService) UpdatePlan(ctx context.Context, req *models.UpdatePlanReq
 		    token_amount = $5, features = $6, is_active = $7
 		WHERE id = $8
 		RETURNING id, name, description, price, currency, token_amount, features, is_active, created_at
-	`, req.Name, req.Description, req.Price, req.Currency, req.TokenAmount, req.Features, req.IsActive, req.ID).Scan(
+	`, req.Name, req.Description, req.Price, req.Currency, req.TokenAmount, req.Features, req.IsActive, req.PlanID).Scan(
 		&plan.ID, &plan.Name, &plan.Description, &plan.Price, &plan.Currency,
 		&plan.TokenAmount, &plan.Features, &plan.IsActive, &plan.CreatedAt,
 	)
