@@ -437,7 +437,10 @@ func (h *Handlers) GetOpenAIToken(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, token)
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    token,
+	})
 }
 
 // Health check
