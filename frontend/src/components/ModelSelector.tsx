@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Zap, DollarSign, Check } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
 
 interface ModelSelectorProps {
   userId: number;
@@ -61,12 +62,9 @@ export default function ModelSelector({ userId, onModelChange, disabled }: Model
   useEffect(() => {
     const fetchSelectedModel = async () => {
       try {
-        const response = await fetch(`/api/users?user_id=${userId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.user?.selected_model) {
-            setSelectedModel(data.user.selected_model as ModelType);
-          }
+        const result = await apiClient.getUser({ user_id: userId });
+        if (result.success && result.data?.user?.selected_model) {
+          setSelectedModel(result.data.user.selected_model as ModelType);
         }
       } catch (error) {
         console.error('Ошибка загрузки выбранной модели:', error);
@@ -83,16 +81,12 @@ export default function ModelSelector({ userId, onModelChange, disabled }: Model
 
     setIsLoading(true);
     try {
-      const response = await fetch('/api/users', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          selected_model: modelId
-        })
+      const result = await apiClient.updateUserModel({
+        user_id: userId,
+        selected_model: modelId
       });
 
-      if (response.ok) {
+      if (result.success) {
         setSelectedModel(modelId);
         onModelChange?.(modelId);
       }
