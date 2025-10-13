@@ -90,6 +90,20 @@ export default function TMAApp() {
       // Регистрируем/обновляем пользователя
       if (telegram.initDataUnsafe.user) {
         registerUser(telegram.initDataUnsafe.user);
+      } else {
+        // Если нет данных пользователя (например, при тестировании в браузере)
+        // создаем тестового пользователя
+        console.log('No user data from Telegram, creating test user');
+        setUser({
+          id: 0,
+          telegram_id: '123456789',
+          username: 'test_user',
+          first_name: 'Тестовый',
+          last_name: 'Пользователь',
+          is_premium: false,
+          token_balance: 1000,
+        });
+        setLoading(false);
       }
     }
   }, []);
