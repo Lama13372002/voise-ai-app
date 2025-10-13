@@ -88,10 +88,14 @@ func (s *OpenAIService) GetEphemeralToken(ctx context.Context, userID *int) (map
 			}
 
 			if len(messages) > 0 {
-				conversationHistory = "\n\nКОНТЕКСТ ПРЕДЫДУЩЕГО РАЗГОВОРА:\n" +
-					fmt.Sprintf("%v", messages) +
-					"\n\nПродолжи разговор, учитывая этот контекст. Если пользователь спросит \"о чем мы говорили\", ссылайся на этот контекст."
+				conversationHistory = "\n\nКОНТЕКСТ ПРЕДЫДУЩЕГО РАЗГОВОРА:\n"
+				for _, msg := range messages {
+					conversationHistory += msg + "\n"
+				}
+				conversationHistory += "\nПродолжи разговор, учитывая этот контекст. Если пользователь спросит \"о чем мы говорили\", ссылайся на этот контекст."
 			}
+		} else {
+			log.Warnf("Failed to get conversation history for user %d: %v", *userID, err)
 		}
 	}
 
