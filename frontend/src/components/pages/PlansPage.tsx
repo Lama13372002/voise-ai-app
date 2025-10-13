@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Crown, Check, Zap, Star, Sparkles, Clock, Headphones, BarChart3, Infinity, Diamond, Rocket, Coins, MessageCircle } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
+import { apiClient } from '@/lib/api-client';
 
 interface UserData {
   id: number;
@@ -43,10 +44,9 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
 
   const fetchPlans = async () => {
     try {
-      const response = await fetch('/api/plans');
-      if (response.ok) {
-        const { plans: plansData } = await response.json();
-        setPlans(plansData);
+      const result = await apiClient.getPlans();
+      if (result.success && (result as any).plans) {
+        setPlans((result as any).plans);
       }
     } catch (error) {
       console.error('Error fetching plans:', error);
@@ -56,12 +56,13 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
   };
 
   const fetchTokenBalance = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/tokens?user_id=${user?.id}`);
-      const data = await response.json();
+    if (!user?.id) return;
 
-      if (data.success) {
-        setTokenBalance(data.token_balance);
+    try {
+      const data = await apiClient.getTokenBalance(user.id);
+
+      if (data.success && data.data) {
+        setTokenBalance(data.data.token_balance);
       }
     } catch (error) {
       console.error('Error fetching token balance:', error);
@@ -105,25 +106,21 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
   };
 
   const simulatePurchase = async (plan: SubscriptionPlan) => {
+    if (!user?.id) return;
+
     try {
       // Создаем подписку для пользователя
-      const subscriptionResponse = await fetch('/api/user-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user?.id,
-          plan_id: plan.id,
-          payment_id: `simulate_${Date.now()}` // Симуляция ID платежа
-        })
+      const subscriptionResult = await apiClient.createSubscription({
+        user_id: user.id,
+        plan_id: plan.id,
+        payment_id: `simulate_${Date.now()}` // Симуляция ID платежа
       });
-
-      const subscriptionResult = await subscriptionResponse.json();
 
       if (subscriptionResult.success) {
         // Обновляем баланс токенов локально
-        setTokenBalance(subscriptionResult.new_token_balance);
+        setTokenBalance((subscriptionResult as any).new_token_balance);
 
-        tg?.showAlert(`Успешно! План "${plan.name}" активирован. Добавлено ${formatTokenAmount(plan.token_amount)} токенов. Новый баланс: ${formatTokenAmount(subscriptionResult.new_token_balance)}`);
+        tg?.showAlert(`Успешно! План "${plan.name}" активирован. Добавлено ${formatTokenAmount(plan.token_amount)} токенов. Новый баланс: ${formatTokenAmount((subscriptionResult as any).new_token_balance)}`);
 
         // Обновляем данные пользователя для синхронизации с базой данных
         if (onUserUpdate) {
@@ -137,8 +134,8 @@ export default function PlansPage({ user, tg, onUserUpdate }: PlansPageProps) {
         }, 1000);
       } else {
         // Проверяем, есть ли информация о существующей подписке
-        if (subscriptionResult.existing_subscription) {
-          const existingSub = subscriptionResult.existing_subscription;
+        if ((subscriptionResult as any).existing_subscription) {
+          const existingSub = (subscriptionResult as any).existing_subscription;
           tg?.showAlert(`У вас уже есть активная подписка "${existingSub.plan_name}" с ${formatTokenAmount(existingSub.tokens_remaining)} неиспользованными токенами. Сначала используйте текущую подписку.`);
         } else {
           tg?.showAlert(`Ошибка при создании подписки: ${subscriptionResult.error || 'Неизвестная ошибка'}`);
