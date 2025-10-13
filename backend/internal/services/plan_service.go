@@ -180,7 +180,7 @@ func (s *PlanService) GetCurrentUserPlan(ctx context.Context, userID int) (map[s
 	var startDate, endDate interface{}
 	var status, planName *string
 	var tokenAmount *int
-	var features interface{}
+	var features []string
 	var tokenBalance int
 	var tokensUsedInPlan int
 
@@ -227,6 +227,11 @@ func (s *PlanService) GetCurrentUserPlan(ctx context.Context, userID int) (map[s
 				"current_plan_name":       "Бесплатный план",
 				"plan_expired":            true,
 			}, nil
+		}
+
+		// Гарантируем, что features не nil
+		if features == nil {
+			features = []string{}
 		}
 
 		result := map[string]interface{}{
