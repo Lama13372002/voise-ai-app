@@ -2,6 +2,51 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
+// Response Types
+interface APIResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+interface TokenBalanceResponse {
+  token_balance: number;
+}
+
+interface TokenDeductResponse {
+  new_balance: number;
+  tokens_deducted: number;
+}
+
+interface UserResponse {
+  user: {
+    id: number;
+    telegram_id: string;
+    username?: string;
+    first_name: string;
+    last_name?: string;
+    is_premium: boolean;
+    token_balance: number;
+    selected_model?: string;
+    selected_voice?: string;
+    selected_prompt_id?: number;
+    created_at: string;
+    updated_at: string;
+    last_active: string;
+  };
+}
+
+interface ConversationMessage {
+  id: number;
+  user_id: number;
+  session_id?: number;
+  message_type: string;
+  content: string;
+  audio_duration_seconds: number;
+  created_at: string;
+}
+
 class APIClient {
   private baseURL: string;
 
@@ -38,31 +83,31 @@ class APIClient {
     first_name: string;
     last_name?: string;
     language_code?: string;
-  }) {
-    return this.request('/users', {
+  }): Promise<APIResponse<UserResponse>> {
+    return this.request<APIResponse<UserResponse>>('/users', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async getUser(params: { telegram_id?: string; user_id?: number }) {
+  async getUser(params: { telegram_id?: string; user_id?: number }): Promise<APIResponse<UserResponse>> {
     const query = new URLSearchParams();
     if (params.telegram_id) query.set('telegram_id', params.telegram_id);
     if (params.user_id) query.set('user_id', params.user_id.toString());
 
-    return this.request(`/users?${query.toString()}`);
+    return this.request<APIResponse<UserResponse>>(`/users?${query.toString()}`);
   }
 
-  async updateUserModel(data: { user_id: number; selected_model: string }) {
-    return this.request('/users', {
+  async updateUserModel(data: { user_id: number; selected_model: string }): Promise<APIResponse<{ selected_model: string }>> {
+    return this.request<APIResponse<{ selected_model: string }>>('/users', {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
   // Tokens
-  async getTokenBalance(userId: number) {
-    return this.request(`/tokens?user_id=${userId}`);
+  async getTokenBalance(userId: number): Promise<APIResponse<TokenBalanceResponse>> {
+    return this.request<APIResponse<TokenBalanceResponse>>(`/tokens?user_id=${userId}`);
   }
 
   async deductTokens(data: {
@@ -76,8 +121,8 @@ class APIClient {
       output_token_details?: Record<string, unknown>;
     };
     check_only?: boolean;
-  }) {
-    return this.request('/tokens', {
+  }): Promise<APIResponse<TokenDeductResponse>> {
+    return this.request<APIResponse<TokenDeductResponse>>('/tokens', {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
