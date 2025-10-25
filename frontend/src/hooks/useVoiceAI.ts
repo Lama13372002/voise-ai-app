@@ -70,9 +70,15 @@ export function useVoiceAI(): UseVoiceAIReturn {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const vadCheckIntervalRef = useRef<number | null>(null);
+  const aiSpeakingStartTimeRef = useRef<number | null>(null);
 
   // Функция для остановки воспроизведения при обнаружении речи пользователя
   const interruptPlayback = useCallback(() => {
+    // КРИТИЧНО: Не прерываем если ИИ говорит меньше 1 секунды (защита от эхо)
+    if (aiSpeakingStartTimeRef.current && Date.now() - aiSpeakingStartTimeRef.current < 1000) {
+      return;
+    }
+
     // Прерываем только если ИИ сейчас говорит
     if (state === 'speaking' && audioRef.current && !audioRef.current.paused) {
       // Плавно уменьшаем громкость для избежания щелчков
@@ -86,6 +92,9 @@ export function useVoiceAI(): UseVoiceAIReturn {
         }
       };
       fadeOut();
+
+      // Сбрасываем таймер после прерывания
+      aiSpeakingStartTimeRef.current = null;
 
       // Также отправляем команду на сервер для прерывания генерации
       if (dcRef.current && dcRef.current.readyState === 'open') {
@@ -141,6 +150,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
     sessionIdRef.current = null;
     processedItemIds.current.clear();
     lastConnectArgsRef.current = null;
+    aiSpeakingStartTimeRef.current = null;
 
     // Очищаем таймер переподключения
     if (reconnectTimeoutRef.current) {
@@ -336,7 +346,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
     try {
       // Выполняем все API запросы параллельно для ускорения
       const [tokenCheckResult, tokenData, userDataResult] = await Promise.all([
-        userId ? checkTokenBalance(userId) : Promise.resolve({ success: true, can_proceed: true, current_balance: 0 }),
+        userId ? checkTokenBalance(userId) : Promise.resolve({ success: true, can_proceed: true, current_balance: 0, error: undefined }),
         apiClient.getOpenAIToken(userId),
         userId ? apiClient.getUser({ user_id: userId }).catch(() => null) : Promise.resolve(null)
       ]);
@@ -391,21 +401,22 @@ export function useVoiceAI(): UseVoiceAIReturn {
           // Вычисляем средний уровень звука
           const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
 
-          // Порог для обнаружения речи (настраиваемый)
-          const SPEECH_THRESHOLD = 15; // Ниже = более чувствительное обнаружение
-          const REQUIRED_ACTIVE_FRAMES = 2; // Количество последовательных активных кадров для подтверждения речи
+          // Порог для обнаружения речи - ПОВЫШЕН для избежания ложных срабатываний на эхо
+          const SPEECH_THRESHOLD = 30; // Было 15, теперь 30 - менее чувствительный
+          const REQUIRED_ACTIVE_FRAMES = 5; // Было 2, теперь 5 - требуется дольше говорить для прерывания
 
           if (average > SPEECH_THRESHOLD) {
             consecutiveActiveFrames++;
 
-            // Если обнаружили речь в течение нескольких кадров подряд - прерываем воспроизведение
+            // КРИТИЧНО: Прерываем ТОЛЬКО если ИИ говорит И прошло достаточно кадров
+            // Это предотвращает зацикливание от эхо
             if (consecutiveActiveFrames >= REQUIRED_ACTIVE_FRAMES) {
               interruptPlayback();
             }
           } else {
             consecutiveActiveFrames = 0;
           }
-        }, 50); // Проверяем каждые 50ms для быстрой реакции
+        }, 100); // Было 50ms, теперь 100ms - реже проверяем для снижения ложных срабатываний
 
       } catch (e) {
         // Продолжаем без локального VAD, будет использоваться только серверный
@@ -585,6 +596,8 @@ export function useVoiceAI(): UseVoiceAIReturn {
             // События статуса ввода
             if (eventData.type === 'input_audio_buffer.speech_started') {
               setState('listening');
+              // Сбрасываем таймер речи ИИ когда пользователь начинает говорить
+              aiSpeakingStartTimeRef.current = null;
             }
             else if (eventData.type === 'input_audio_buffer.speech_stopped') {
               // Конец речи пользователя
@@ -598,15 +611,23 @@ export function useVoiceAI(): UseVoiceAIReturn {
               setState('thinking');
             }
             else if (eventData.type === 'response.audio.delta') {
+              // Запоминаем время начала речи ИИ (только первый раз)
+              if (state !== 'speaking') {
+                aiSpeakingStartTimeRef.current = Date.now();
+              }
               setState('speaking');
             }
             else if (eventData.type === 'response.audio.done') {
               setState('connected');
+              // Сбрасываем время начала речи ИИ
+              aiSpeakingStartTimeRef.current = null;
             }
 
             // Обработка завершения ответа с данными о токенах
             else if (eventData.type === 'response.done') {
               setState('connected');
+              // Сбрасываем время начала речи ИИ
+              aiSpeakingStartTimeRef.current = null;
 
               if (eventData.response?.usage) {
                 const usage = eventData.response.usage;
