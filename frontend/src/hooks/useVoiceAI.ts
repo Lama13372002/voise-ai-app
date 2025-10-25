@@ -75,8 +75,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
   const interruptPlayback = useCallback(() => {
     // Прерываем только если ИИ сейчас говорит
     if (state === 'speaking' && audioRef.current && !audioRef.current.paused) {
-      console.log('⚡ Прерывание воспроизведения ИИ');
-
       // Плавно уменьшаем громкость для избежания щелчков
       const fadeOut = () => {
         if (audioRef.current && audioRef.current.volume > 0.1) {
@@ -85,7 +83,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
         } else if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current.volume = 1; // Восстанавливаем громкость для следующего ответа
-          console.log('🔇 Воспроизведение остановлено');
         }
       };
       fadeOut();
@@ -337,31 +334,36 @@ export function useVoiceAI(): UseVoiceAIReturn {
     const voice = selectedVoice || 'ash';
 
     try {
-      // Проверяем баланс токенов перед подключением
-      if (userId) {
-        const tokenCheck = await checkTokenBalance(userId);
+      // Выполняем все API запросы параллельно для ускорения
+      const [tokenCheckResult, tokenData, userDataResult] = await Promise.all([
+        userId ? checkTokenBalance(userId) : Promise.resolve({ success: true, can_proceed: true, current_balance: 0 }),
+        apiClient.getOpenAIToken(userId),
+        userId ? apiClient.getUser({ user_id: userId }).catch(() => null) : Promise.resolve(null)
+      ]);
 
-        if (!tokenCheck.success) {
-          throw new Error(tokenCheck.error || 'Ошибка проверки баланса токенов');
+      // Извлекаем модель пользователя
+      const selectedModel = userDataResult?.success && userDataResult?.data
+        ? userDataResult.data.user?.selected_model || 'gpt-realtime'
+        : 'gpt-realtime';
+
+      // Проверяем результаты проверки токенов
+      if (userId) {
+        if (!tokenCheckResult.success) {
+          throw new Error(tokenCheckResult.error || 'Ошибка проверки баланса токенов');
         }
 
-        if (!tokenCheck.can_proceed) {
-          // Если токенов меньше 2000, списываем остаток и показываем ошибку
-          if (tokenCheck.current_balance > 0 && tokenCheck.current_balance <= 2000) {
-            await deductRemainingTokens(userId, tokenCheck.current_balance);
+        if (!tokenCheckResult.can_proceed) {
+          if (tokenCheckResult.current_balance > 0 && tokenCheckResult.current_balance <= 2000) {
+            await deductRemainingTokens(userId, tokenCheckResult.current_balance);
           }
-
           throw new Error('Недостаточно токенов для подключения. Приобретите подписку для использования голосового ИИ.');
         }
       }
-      // Получаем токен от нашего API с user_id для контекста
-      const tokenData = await apiClient.getOpenAIToken(userId);
 
       // Извлекаем токен из ответа
       const ephemeralKey = tokenData.data?.client_secret?.value || tokenData.data?.value;
 
       if (!ephemeralKey) {
-        console.error('Token response:', tokenData);
         throw new Error('Токен не найден в ответе сервера');
       }
 
@@ -406,21 +408,18 @@ export function useVoiceAI(): UseVoiceAIReturn {
         }, 50); // Проверяем каждые 50ms для быстрой реакции
 
       } catch (e) {
-        console.warn('Не удалось инициализировать локальный VAD:', e);
         // Продолжаем без локального VAD, будет использоваться только серверный
       }
 
-      // Инициализация блокировки earpiece БЕЗ создания дополнительных потоков
-      // Все функции теперь используют ТОЛЬКО основной поток от useMediaManager
-
-      // 1. Принудительно активируем speaker mode (использует только oscillator)
-      await enforceMainSpeaker(false);
-
-      // 2. Инициализируем полную блокировку proximity sensor (использует только oscillator)
-      await initializeProximityDisabler(false);
-
-      // 3. Создаем аудио контекст для блокировки earpiece (использует только oscillator)
-      const speakerContext = await createSpeakerAudioContext(false);
+      // Инициализация блокировки earpiece - БЫСТРАЯ версия без лишних операций
+      // Запускаем асинхронно чтобы не блокировать подключение
+      Promise.all([
+        enforceMainSpeaker(false),
+        initializeProximityDisabler(false),
+        createSpeakerAudioContext(false)
+      ]).catch(() => {
+        // Игнорируем ошибки инициализации
+      });
 
       // 4. Дополнительная защита: принудительно блокируем любые медиа события
       const blockMediaEvents = (e: Event) => {
@@ -440,58 +439,48 @@ export function useVoiceAI(): UseVoiceAIReturn {
         window.addEventListener(eventType, blockMediaEvents, { passive: false, capture: true });
       });
 
+      // КРИТИЧНО: Создаем и настраиваем аудио элемент ДО создания RTCPeerConnection
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+        audioRef.current.autoplay = true;
+        audioRef.current.volume = 1.0;
+        audioRef.current.muted = false;
+
+        // Принудительные атрибуты для speaker mode
+        audioRef.current.setAttribute('playsinline', 'true');
+        audioRef.current.setAttribute('webkit-playsinline', 'true');
+        audioRef.current.setAttribute('data-proximity-blocked', 'true');
+        audioRef.current.setAttribute('webkit-audio-session', 'playback');
+        audioRef.current.setAttribute('audio-session', 'playback');
+        audioRef.current.style.cssText = '-webkit-audio-session: playback !important; audio-session: playback !important;';
+
+        // Принудительно применяем настройки speaker ДО получения потока
+        await forceAudioToSpeaker(audioRef.current);
+      }
+
       // Создаем RTCPeerConnection
       pcRef.current = new RTCPeerConnection();
 
       // Настраиваем RTCPeerConnection для принудительного использования внешнего динамика
       configureRTCForSpeaker(pcRef.current);
 
-      // АГРЕССИВНЫЙ обработчик для входящего аудио
+      // Обработчик для входящего аудио
       pcRef.current.ontrack = async (event) => {
+        if (!audioRef.current) return;
 
-        if (!audioRef.current) {
-          audioRef.current = new Audio();
-          audioRef.current.autoplay = true;
-
-          // КРИТИЧНО: Блокируем earpiece еще до установки потока
-          audioRef.current.setAttribute('data-proximity-blocked', 'true');
-          audioRef.current.setAttribute('webkit-audio-session', 'playback');
-          audioRef.current.style.cssText += '-webkit-audio-session: playback !important;';
-        }
-
-        // Устанавливаем поток
+        // Устанавливаем поток на уже настроенный аудио элемент
         audioRef.current.srcObject = event.streams[0];
 
-        // АГРЕССИВНАЯ последовательность принудительной настройки
-
-        // 1. Сначала принудительная настройка аудио элемента
+        // Применяем настройки speaker один раз
         await forceAudioToSpeaker(audioRef.current);
-
-        // 2. Затем принудительная активация speaker mode (без запроса разрешения)
-        await enforceMainSpeaker(false);
-
-        // 3. Дополнительная блокировка через прямое вмешательство в DOM
-        setTimeout(async () => {
-          if (audioRef.current) {
-            // Еще раз принудительно настраиваем через 100ms
-            await forceAudioToSpeaker(audioRef.current);
-
-            // И через 500ms для надежности
-            setTimeout(async () => {
-              if (audioRef.current) {
-                await forceAudioToSpeaker(audioRef.current);
-              }
-            }, 500);
-          }
-        }, 100);
       };
 
       // Обработчик состояния соединения
       pcRef.current.onconnectionstatechange = () => {
         const connectionState = pcRef.current?.connectionState;
 
+        // НЕ устанавливаем 'connected' здесь - ждем когда data channel откроется
         if (connectionState === 'connected') {
-          setState('connected');
           // Сбрасываем счетчик попыток при успешном подключении
           setReconnectAttempts(0);
         } else if (connectionState === 'failed' || connectionState === 'disconnected') {
@@ -553,6 +542,9 @@ export function useVoiceAI(): UseVoiceAIReturn {
       dcRef.current = pcRef.current.createDataChannel('oai-events');
 
       dcRef.current.onopen = () => {
+        // КРИТИЧНО: Устанавливаем статус 'connected' ТОЛЬКО когда data channel готов
+        setState('connected');
+
         // Настраиваем сессию с выбранным голосом и промтом
         if (dcRef.current && dcRef.current.readyState === 'open') {
           const sessionConfig = {
@@ -587,47 +579,38 @@ export function useVoiceAI(): UseVoiceAIReturn {
         try {
           const eventData = JSON.parse(message.data);
 
-          // Логируем все события для отладки
-          console.log('OpenAI Event:', eventData.type);
-
           // Обрабатываем только важные события
           if (eventData.type) {
 
             // События статуса ввода
             if (eventData.type === 'input_audio_buffer.speech_started') {
-              console.log('👂 Начало речи пользователя');
               setState('listening');
             }
             else if (eventData.type === 'input_audio_buffer.speech_stopped') {
-              console.log('🤐 Конец речи пользователя');
+              // Конец речи пользователя
             }
             else if (eventData.type === 'input_audio_buffer.committed') {
-              console.log('✅ Аудио буфер зафиксирован');
+              // Аудио буфер зафиксирован
             }
 
             // События создания ответа
             else if (eventData.type === 'response.created') {
-              console.log('🤔 ИИ начал обработку');
               setState('thinking');
             }
             else if (eventData.type === 'response.audio.delta') {
-              console.log('🔊 ИИ отправляет аудио');
               setState('speaking');
             }
             else if (eventData.type === 'response.audio.done') {
-              console.log('🔇 ИИ закончил говорить');
               setState('connected');
             }
 
             // Обработка завершения ответа с данными о токенах
             else if (eventData.type === 'response.done') {
-              console.log('✅ Ответ завершен');
               setState('connected');
 
               if (eventData.response?.usage) {
                 const usage = eventData.response.usage;
                 const responseId = eventData.response?.id || `session_${Date.now()}`;
-                console.log('💰 Токены использовано:', usage.total_tokens);
 
                 // Списываем токены через новый PATCH endpoint
                 await deductTokens(usage, responseId);
@@ -652,7 +635,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
                 if (item.role === 'user') {
                   if (item.content[0]?.type === 'input_audio') {
                     const userMessage = item.content[0]?.transcript || '[Голосовое сообщение]';
-                    console.log('💬 Пользователь:', userMessage);
                     await saveMessage('user', userMessage);
                   }
                 }
@@ -661,7 +643,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
                 else if (item.role === 'assistant') {
                   if (item.content[0]?.type === 'output_audio' && item.content[0]?.transcript) {
                     const transcript = item.content[0].transcript;
-                    console.log('🤖 ИИ:', transcript);
                     await saveMessage('assistant', transcript);
                   }
                 }
@@ -670,12 +651,11 @@ export function useVoiceAI(): UseVoiceAIReturn {
 
             // Обработка ошибок
             else if (eventData.type === 'error') {
-              console.error('❌ Ошибка от OpenAI:', eventData.error);
               setError(eventData.error?.message || 'Ошибка от сервера OpenAI');
             }
           }
         } catch (e) {
-          console.error('Ошибка парсинга события:', e);
+          // Игнорируем ошибки парсинга
         }
       };
 
@@ -683,20 +663,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
       const offer = await pcRef.current.createOffer();
       await pcRef.current.setLocalDescription(offer);
 
-      // Получаем выбранную модель пользователя
-      let selectedModel = 'gpt-realtime';
-      if (userId) {
-        try {
-          const userData = await apiClient.getUser({ user_id: userId });
-          if (userData.success && userData.data) {
-            selectedModel = userData.data.user?.selected_model || 'gpt-realtime';
-          }
-        } catch (e) {
-          console.error('Ошибка получения модели пользователя:', e);
-        }
-      }
-
-      // Отправляем SDP на OpenAI
+      // Отправляем SDP на OpenAI (selectedModel уже получен в начале)
       const baseUrl = 'https://api.openai.com/v1/realtime/calls';
 
       const sdpResp = await fetch(`${baseUrl}?model=${encodeURIComponent(selectedModel)}`, {
@@ -715,7 +682,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
       const answerSdp = await sdpResp.text();
       await pcRef.current.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
-      setState('connected');
+      // Статус 'connected' будет установлен в dcRef.current.onopen
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Неизвестная ошибка';
