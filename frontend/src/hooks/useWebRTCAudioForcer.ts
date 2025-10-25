@@ -105,7 +105,6 @@ export function useWebRTCAudioForcer(): WebRTCAudioForcerReturn {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
 
-
           // АГРЕССИВНЫЙ поиск громкого динамика - проверяем ВСЕ возможные варианты
           let speakerDevice = null;
 
@@ -114,74 +113,70 @@ export function useWebRTCAudioForcer(): WebRTCAudioForcerReturn {
             device.label.toLowerCase().includes('speaker') ||
             device.label.toLowerCase().includes('динамик') ||
             device.label.toLowerCase().includes('speakerphone') ||
-            device.label.toLowerCase().includes('громкий')
+            device.label.toLowerCase().includes('громкий') ||
+            device.label.toLowerCase().includes('loud')
           );
 
-          // Приоритет 2: Default device (обычно это speaker)
-          if (!speakerDevice) {
-            speakerDevice = audioOutputs.find(device => device.deviceId === 'default');
-          }
-
-          // Приоритет 3: Первое доступное устройство (исключаем earpiece)
+          // Приоритет 2: НЕ earpiece устройства (исключаем явные earpiece)
           if (!speakerDevice) {
             speakerDevice = audioOutputs.find(device =>
               !device.label.toLowerCase().includes('earpiece') &&
               !device.label.toLowerCase().includes('receiver') &&
               !device.label.toLowerCase().includes('ear') &&
-              !device.label.toLowerCase().includes('телефон')
+              !device.label.toLowerCase().includes('телефон') &&
+              !device.label.toLowerCase().includes('phone') &&
+              device.deviceId !== ''
             );
           }
 
-          // Приоритет 4: Любое устройство кроме первого (первое часто earpiece)
+          // Приоритет 3: Любое устройство кроме первого (первое часто earpiece)
           if (!speakerDevice && audioOutputs.length > 1) {
-            speakerDevice = audioOutputs[1]; // Берем второе устройство
+            speakerDevice = audioOutputs[1];
+          }
+
+          // Приоритет 4: Default device как последний вариант
+          if (!speakerDevice) {
+            speakerDevice = audioOutputs.find(device => device.deviceId === 'default');
           }
 
           if (speakerDevice) {
             await audioElementExtended.setSinkId(speakerDevice.deviceId);
           } else {
-            // В крайнем случае используем устройство по умолчанию
             await audioElementExtended.setSinkId('');
           }
-
-          // ДОПОЛНИТЕЛЬНАЯ проверка: пробуем принудительно заблокировать earpiece
-          try {
-            // Если есть несколько устройств, пробуем каждое кроме первого
-            for (let i = 1; i < audioOutputs.length; i++) {
-              const device = audioOutputs[i];
-              if (!device.label.toLowerCase().includes('earpiece') &&
-                  !device.label.toLowerCase().includes('receiver')) {
-                await audioElementExtended.setSinkId(device.deviceId);
-                break;
-              }
-            }
-          } catch (e) {
-            // Игнорируем ошибки setSinkId
-          }
         } catch (sinkError) {
-          // Устанавливаем пустую строку для использования устройства по умолчанию
-          await audioElementExtended.setSinkId('');
+          try {
+            await audioElementExtended.setSinkId('');
+          } catch (e) {
+            // Игнорируем критические ошибки
+          }
         }
       }
 
-      // 3. Создаем Web Audio контекст для дополнительного контроля
+      // 3. Создаем Web Audio контекст для дополнительного контроля И МАКСИМАЛЬНОЙ громкости
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextClass) {
         return;
       }
       const audioContext = new AudioContextClass();
+
+      // Резюмируем контекст если он приостановлен
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
       const source = audioContext.createMediaElementSource(audioElement);
       const gainNode = audioContext.createGain();
 
-      // Устанавливаем максимальную громкость
-      gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
+      // Устанавливаем МАКСИМАЛЬНУЮ громкость (даже больше 1.0 для громкого динамика)
+      gainNode.gain.setValueAtTime(2.0, audioContext.currentTime);
 
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
 
-
       return audioContext;
     } catch (error) {
+      // Игнорируем ошибки
     }
   }, []);
 
