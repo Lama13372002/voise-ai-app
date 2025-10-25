@@ -89,11 +89,17 @@ async function requestMediaAccess(): Promise<MediaStream> {
 
   return navigator.mediaDevices.getUserMedia({
     audio: {
-      echoCancellation: true,      // Включаем для лучшего качества
-      noiseSuppression: true,      // Включаем для чистого звука
-      autoGainControl: true,       // Включаем для стабильной громкости
-      sampleRate: 48000,           // Высокое качество
-      channelCount: 1              // Моно для экономии ресурсов
-    }
+      echoCancellation: { ideal: true },      // КРИТИЧНО: Агрессивное подавление эхо
+      noiseSuppression: { ideal: true },      // Подавление шума
+      autoGainControl: { ideal: true },       // Автоматическая регулировка громкости
+      sampleRate: 48000,                      // Высокое качество
+      channelCount: 1,                        // Моно для экономии ресурсов
+      // Дополнительные параметры для Chrome/WebKit (специфичные для браузера)
+      googEchoCancellation: true,
+      googAutoGainControl: true,
+      googNoiseSuppression: true,
+      googHighpassFilter: true,
+      googTypingNoiseDetection: true
+    } as MediaTrackConstraints
   });
 }
