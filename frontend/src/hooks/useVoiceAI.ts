@@ -67,65 +67,10 @@ export function useVoiceAI(): UseVoiceAIReturn {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastConnectArgsRef = useRef<{userId?: number, selectedVoice?: string} | null>(null);
   const connectInternalRef = useRef<((userId?: number, selectedVoice?: string) => Promise<void>) | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const vadCheckIntervalRef = useRef<number | null>(null);
-  const aiSpeakingStartTimeRef = useRef<number | null>(null);
-
-  // Функция для остановки воспроизведения при обнаружении речи пользователя
-  const interruptPlayback = useCallback(() => {
-    // КРИТИЧНО: Не прерываем если ИИ говорит меньше 1 секунды (защита от эхо)
-    if (aiSpeakingStartTimeRef.current && Date.now() - aiSpeakingStartTimeRef.current < 1000) {
-      return;
-    }
-
-    // Прерываем только если ИИ сейчас говорит
-    if (state === 'speaking' && audioRef.current && !audioRef.current.paused) {
-      // Плавно уменьшаем громкость для избежания щелчков
-      const fadeOut = () => {
-        if (audioRef.current && audioRef.current.volume > 0.1) {
-          audioRef.current.volume = Math.max(0, audioRef.current.volume - 0.3);
-          requestAnimationFrame(fadeOut);
-        } else if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.volume = 1; // Восстанавливаем громкость для следующего ответа
-        }
-      };
-      fadeOut();
-
-      // Сбрасываем таймер после прерывания
-      aiSpeakingStartTimeRef.current = null;
-
-      // Также отправляем команду на сервер для прерывания генерации
-      if (dcRef.current && dcRef.current.readyState === 'open') {
-        dcRef.current.send(JSON.stringify({
-          type: 'response.cancel'
-        }));
-      }
-    }
-  }, [state]);
+  // Локальный VAD отключен - используем только серверный от OpenAI
 
   // Функция для очистки соединения
   const cleanupConnection = useCallback(() => {
-    // Останавливаем VAD мониторинг
-    if (vadCheckIntervalRef.current) {
-      clearInterval(vadCheckIntervalRef.current);
-      vadCheckIntervalRef.current = null;
-    }
-
-    if (analyserRef.current) {
-      analyserRef.current = null;
-    }
-
-    if (audioContextRef.current) {
-      try {
-        audioContextRef.current.close();
-      } catch (e) {
-        // Игнорируем ошибки
-      }
-      audioContextRef.current = null;
-    }
-
     if (pcRef.current) {
       try {
         pcRef.current.close();
@@ -150,7 +95,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
     sessionIdRef.current = null;
     processedItemIds.current.clear();
     lastConnectArgsRef.current = null;
-    aiSpeakingStartTimeRef.current = null;
 
     // Очищаем таймер переподключения
     if (reconnectTimeoutRef.current) {
@@ -380,47 +324,9 @@ export function useVoiceAI(): UseVoiceAIReturn {
       // ВАЖНО: Получаем доступ к микрофону - ЕДИНСТВЕННЫЙ запрос разрешения!
       localStreamRef.current = await getMediaStream();
 
-      // Инициализируем локальный VAD для быстрого прерывания
-      try {
-        audioContextRef.current = new AudioContext();
-        const source = audioContextRef.current.createMediaStreamSource(localStreamRef.current);
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 2048;
-        analyserRef.current.smoothingTimeConstant = 0.3; // Более быстрая реакция
-        source.connect(analyserRef.current);
-
-        // Запускаем мониторинг уровня звука
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        let consecutiveActiveFrames = 0;
-
-        vadCheckIntervalRef.current = window.setInterval(() => {
-          if (!analyserRef.current) return;
-
-          analyserRef.current.getByteFrequencyData(dataArray);
-
-          // Вычисляем средний уровень звука
-          const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-
-          // Порог для обнаружения речи - ПОВЫШЕН для избежания ложных срабатываний на эхо
-          const SPEECH_THRESHOLD = 30; // Было 15, теперь 30 - менее чувствительный
-          const REQUIRED_ACTIVE_FRAMES = 5; // Было 2, теперь 5 - требуется дольше говорить для прерывания
-
-          if (average > SPEECH_THRESHOLD) {
-            consecutiveActiveFrames++;
-
-            // КРИТИЧНО: Прерываем ТОЛЬКО если ИИ говорит И прошло достаточно кадров
-            // Это предотвращает зацикливание от эхо
-            if (consecutiveActiveFrames >= REQUIRED_ACTIVE_FRAMES) {
-              interruptPlayback();
-            }
-          } else {
-            consecutiveActiveFrames = 0;
-          }
-        }, 100); // Было 50ms, теперь 100ms - реже проверяем для снижения ложных срабатываний
-
-      } catch (e) {
-        // Продолжаем без локального VAD, будет использоваться только серверный
-      }
+      // КРИТИЧНО: Отключаем локальный VAD - используем ТОЛЬКО серверный VAD от OpenAI
+      // Серверный VAD умнее и распознает именно СЛОВА, а не шумы/мычание/шорохи
+      // Это полностью решает проблему зацикливания от эхо
 
       // Инициализация блокировки earpiece - БЫСТРАЯ версия без лишних операций
       // Запускаем асинхронно чтобы не блокировать подключение
@@ -570,10 +476,10 @@ export function useVoiceAI(): UseVoiceAIReturn {
                 model: 'whisper-1'
               },
               turn_detection: {
-                type: 'server_vad',
-                threshold: 0.3, // Более чувствительное обнаружение речи
-                prefix_padding_ms: 100, // Меньше задержки перед началом записи
-                silence_duration_ms: 200 // Быстрее определяем конец речи (200мс тишины)
+                type: 'semantic_vad',
+                // ИДЕАЛЬНО: Семантический VAD понимает СМЫСЛ слов и не прерывает пользователя
+                // Он определяет окончание фразы НЕ по тишине, а по тому ЧТО сказано
+                eagerness: 'low' // Даем пользователю время закончить мысль, не торопим
               },
               tools: [],
               tool_choice: 'auto',
@@ -596,8 +502,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
             // События статуса ввода
             if (eventData.type === 'input_audio_buffer.speech_started') {
               setState('listening');
-              // Сбрасываем таймер речи ИИ когда пользователь начинает говорить
-              aiSpeakingStartTimeRef.current = null;
             }
             else if (eventData.type === 'input_audio_buffer.speech_stopped') {
               // Конец речи пользователя
@@ -611,23 +515,15 @@ export function useVoiceAI(): UseVoiceAIReturn {
               setState('thinking');
             }
             else if (eventData.type === 'response.audio.delta') {
-              // Запоминаем время начала речи ИИ (только первый раз)
-              if (state !== 'speaking') {
-                aiSpeakingStartTimeRef.current = Date.now();
-              }
               setState('speaking');
             }
             else if (eventData.type === 'response.audio.done') {
               setState('connected');
-              // Сбрасываем время начала речи ИИ
-              aiSpeakingStartTimeRef.current = null;
             }
 
             // Обработка завершения ответа с данными о токенах
             else if (eventData.type === 'response.done') {
               setState('connected');
-              // Сбрасываем время начала речи ИИ
-              aiSpeakingStartTimeRef.current = null;
 
               if (eventData.response?.usage) {
                 const usage = eventData.response.usage;
@@ -725,7 +621,7 @@ export function useVoiceAI(): UseVoiceAIReturn {
         localStreamRef.current = null;
       }
     }
-  }, [saveMessage, checkTokenBalance, deductRemainingTokens, enforceMainSpeaker, initializeProximityDisabler, configureRTCForSpeaker, forceAudioToSpeaker, createSpeakerAudioContext, reconnectAttempts, maxReconnectAttempts, attemptReconnect, getMediaStream, interruptPlayback]);
+  }, [saveMessage, checkTokenBalance, deductRemainingTokens, enforceMainSpeaker, initializeProximityDisabler, configureRTCForSpeaker, forceAudioToSpeaker, createSpeakerAudioContext, reconnectAttempts, maxReconnectAttempts, attemptReconnect, getMediaStream]);
 
   // Устанавливаем ссылку на функцию в ref
   connectInternalRef.current = connectInternal;
