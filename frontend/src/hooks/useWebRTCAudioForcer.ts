@@ -160,9 +160,15 @@ export function useWebRTCAudioForcer(): WebRTCAudioForcerReturn {
       }
       const audioContext = new AudioContextClass();
 
-      // Резюмируем контекст если он приостановлен
+      // КРИТИЧНО: Резюмируем контекст если он приостановлен
+      // Это важно для первого запуска TMA когда браузер блокирует аудио
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
+      }
+
+      // Проверяем что контекст действительно запущен
+      if (audioContext.state !== 'running') {
+        return;
       }
 
       const source = audioContext.createMediaElementSource(audioElement);
@@ -187,6 +193,11 @@ export function useWebRTCAudioForcer(): WebRTCAudioForcerReturn {
       // Создаем аудио контекст
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       const audioContext = new AudioContextClass();
+
+      // КРИТИЧНО: Резюмируем контекст (для первого запуска TMA)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
 
       // Создаем постоянный генератор для блокировки переключений
       const oscillator = audioContext.createOscillator();
