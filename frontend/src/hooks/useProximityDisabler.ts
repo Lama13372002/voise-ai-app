@@ -56,6 +56,11 @@ export function useProximityDisabler(options: ProximityDisablerOptions = { enabl
       }
       const audioContext = new AudioContextClass();
 
+      // КРИТИЧНО: Резюмируем контекст (для первого запуска TMA)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
       // Создаем постоянный бесшумный поток для блокировки переключения
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
