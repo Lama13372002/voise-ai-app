@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useVoiceAI } from '@/hooks/useVoiceAI';
+import { useAudioInit } from '@/hooks/useAudioInit';
 import { Mic, MicOff, Phone, PhoneOff, Loader2, MessageCircle, Waves, Sparkles, Volume2, Headphones, Zap, Clock, Crown, Coins } from 'lucide-react';
 import type { TelegramWebApp } from '@/types/telegram';
 import { useState, useEffect, useCallback } from 'react';
@@ -34,6 +35,7 @@ interface VoiceAIPageProps {
 
 export default function VoiceAIPage({ user, tg, onUserUpdate }: VoiceAIPageProps) {
   const { state, isConnected, connect, disconnect, error } = useVoiceAI();
+  const { isAudioReady, initAudio } = useAudioInit();
   const [tokenBalance, setTokenBalance] = useState<number>(0);
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<string>(user?.selected_voice || 'ash');
@@ -74,6 +76,10 @@ export default function VoiceAIPage({ user, tg, onUserUpdate }: VoiceAIPageProps
       tg?.showAlert('Недостаточно токенов для голосового общения. Пожалуйста, пополните баланс.');
       return;
     }
+
+    // КРИТИЧНО: Инициализируем аудио систему перед подключением
+    // Это решает проблему с earpiece при первом запуске TMA
+    await initAudio();
 
     tg?.HapticFeedback.impactOccurred('medium');
     // Передаем user_id и выбранный голос для подключения
