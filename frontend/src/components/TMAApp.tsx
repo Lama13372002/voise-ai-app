@@ -64,7 +64,13 @@ export default function TMAApp() {
 
       // КРИТИЧНО: Принудительно устанавливаем speaker mode ДО всего остального
       // Это важно для первого запуска TMA
-      import('@/lib/speakerForcer').then(({ forceSpeakerMode }) => {
+      import('@/lib/speakerForcer').then(({ forceSpeakerMode, prepareAudioElementWithSpeaker }) => {
+        // Сначала создаем подготовленный аудио элемент с speaker mode
+        prepareAudioElementWithSpeaker().catch(() => {
+          // Игнорируем ошибки
+        });
+        
+        // Затем принудительно устанавливаем speaker mode для всех элементов
         forceSpeakerMode().catch(() => {
           // Игнорируем ошибки при ранней инициализации
         });
