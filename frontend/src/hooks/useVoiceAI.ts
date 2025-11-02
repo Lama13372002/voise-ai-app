@@ -324,6 +324,13 @@ export function useVoiceAI(): UseVoiceAIReturn {
       // ВАЖНО: Получаем доступ к микрофону - ЕДИНСТВЕННЫЙ запрос разрешения!
       localStreamRef.current = await getMediaStream();
 
+      // КРИТИЧНО: Сразу после получения микрофона принудительно устанавливаем speaker mode
+      // Это критично, так как браузер может переключиться на earpiece именно в этот момент
+      const { forceSpeakerMode } = await import('@/lib/speakerForcer');
+      await forceSpeakerMode().catch(() => {
+        // Игнорируем ошибки, но пытаемся установить speaker mode
+      });
+
       // КРИТИЧНО: Отключаем локальный VAD - используем ТОЛЬКО серверный VAD от OpenAI
       // Серверный VAD умнее и распознает именно СЛОВА, а не шумы/мычание/шорохи
       // Это полностью решает проблему зацикливания от эхо
@@ -375,6 +382,12 @@ export function useVoiceAI(): UseVoiceAIReturn {
         // Это важно, так как при первом входе в Telegram и TMA браузер еще не полностью готов
         await new Promise(resolve => setTimeout(resolve, 100));
 
+        // КРИТИЧНО: Используем глобальную утилиту для ранней установки speaker mode
+        const { forceSpeakerMode } = await import('@/lib/speakerForcer');
+        await forceSpeakerMode().catch(() => {
+          // Игнорируем ошибки при ранней инициализации
+        });
+
         // Принудительно применяем настройки speaker ДО получения потока
         await forceAudioToSpeaker(audioRef.current);
 
@@ -383,6 +396,8 @@ export function useVoiceAI(): UseVoiceAIReturn {
         setTimeout(async () => {
           if (audioRef.current) {
             await forceAudioToSpeaker(audioRef.current);
+            const { reforceSpeakerMode } = await import('@/lib/speakerForcer');
+            await reforceSpeakerMode(audioRef.current);
           }
         }, 500);
       }
@@ -400,20 +415,33 @@ export function useVoiceAI(): UseVoiceAIReturn {
         // Устанавливаем поток на уже настроенный аудио элемент
         audioRef.current.srcObject = event.streams[0];
 
-        // КРИТИЧНО: Применяем настройки speaker с повторными попытками
-        // Это важно, так как при первом запуске браузер может еще не готов
+        // КРИТИЧНО: Используем глобальную утилиту для принудительной установки speaker
+        const { reforceSpeakerMode } = await import('@/lib/speakerForcer');
+        await reforceSpeakerMode(audioRef.current);
+
+        // Применяем настройки speaker с повторными попытками
         await forceAudioToSpeaker(audioRef.current);
 
         // Повторно применяем настройки после небольшой задержки (для первого запуска)
         setTimeout(async () => {
           if (audioRef.current) {
+            await reforceSpeakerMode(audioRef.current);
             await forceAudioToSpeaker(audioRef.current);
           }
-        }, 300);
+        }, 200);
 
-        // Еще одна попытка через секунду (на случай если первая не сработала)
+        // Еще одна попытка через 500ms
         setTimeout(async () => {
           if (audioRef.current) {
+            await reforceSpeakerMode(audioRef.current);
+            await forceAudioToSpeaker(audioRef.current);
+          }
+        }, 500);
+
+        // Последняя попытка через секунду (на случай если предыдущие не сработали)
+        setTimeout(async () => {
+          if (audioRef.current) {
+            await reforceSpeakerMode(audioRef.current);
             await forceAudioToSpeaker(audioRef.current);
           }
         }, 1000);
