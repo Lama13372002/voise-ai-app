@@ -5,6 +5,173 @@
 
 let speakerForced = false;
 let forcingInProgress = false;
+let audioElementPrepared = false;
+let preparedAudioElement: HTMLAudioElement | null = null;
+
+/**
+ * Создает и подготавливает аудио элемент с speaker mode ДО получения потока
+ * Это критично для первого запуска TMA
+ */
+export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement | null> {
+  if (preparedAudioElement) {
+    return preparedAudioElement;
+  }
+
+  try {
+    const audio = document.createElement('audio');
+    audio.autoplay = false;
+    audio.volume = 0.01; // Очень тихий звук, но не muted (muted может мешать)
+    audio.muted = false;
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('webkit-playsinline', 'true');
+    audio.setAttribute('data-proximity-blocked', 'true');
+    audio.setAttribute('webkit-audio-session', 'playback');
+    audio.setAttribute('audio-session', 'playback');
+    audio.style.display = 'none';
+    audio.style.position = 'absolute';
+    audio.style.opacity = '0';
+    audio.style.pointerEvents = 'none';
+    
+    // Добавляем в DOM чтобы элемент был готов
+    document.body.appendChild(audio);
+
+    // КРИТИЧНО: Создаем пустой MediaStream для "захвата" speaker mode
+    // Браузер может переключиться на earpiece только если нет активного аудио элемента
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      try {
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        // Создаем неслышимый поток через speaker
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = 0.001; // Почти неслышимый, но активный
+        
+        // Используем очень низкую частоту, которую не слышно
+        oscillator.frequency.value = 1;
+        oscillator.type = 'sine';
+
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+
+        // КРИТИЧНО: Сначала устанавливаем speaker mode ДО создания потока
+        // Это важно для "захвата" speaker mode до того, как браузер переключится на earpiece
+        const audioWithSink = audio as HTMLAudioElement & {
+          setSinkId?: (deviceId: string) => Promise<void>;
+        };
+
+        if (audioWithSink.setSinkId) {
+          await setSpeakerSinkId(audioWithSink);
+        }
+
+        // Создаем MediaStream из AudioContext
+        const destination = ctx.createMediaStreamDestination();
+        gainNode.connect(destination);
+        
+        // Устанавливаем поток на аудио элемент
+        audio.srcObject = destination.stream;
+        
+        // КРИТИЧНО: Повторно устанавливаем speaker mode ПОСЛЕ установки потока
+        if (audioWithSink.setSinkId) {
+          await setSpeakerSinkId(audioWithSink);
+        }
+
+        // Запускаем воспроизведение (неслышимого) звука
+        try {
+          await audio.play();
+        } catch (e) {
+          // Игнорируем ошибки автоплея
+        }
+
+        preparedAudioElement = audio;
+        audioElementPrepared = true;
+        
+        console.log('[SpeakerForcer] Аудио элемент подготовлен с speaker mode');
+
+        // Сохраняем контекст для дальнейшего использования
+        (window as any).__speakerAudioContext = ctx;
+        (window as any).__speakerOscillator = oscillator;
+        (window as any).__speakerGainNode = gainNode;
+
+        return audio;
+      } catch (error) {
+        console.error('[SpeakerForcer] Ошибка создания MediaStream:', error);
+      }
+    }
+
+    // Если не удалось создать поток, все равно устанавливаем speaker mode
+    const audioWithSink = audio as HTMLAudioElement & {
+      setSinkId?: (deviceId: string) => Promise<void>;
+    };
+
+    if (audioWithSink.setSinkId) {
+      await setSpeakerSinkId(audioWithSink);
+    }
+
+    preparedAudioElement = audio;
+    audioElementPrepared = true;
+
+    return audio;
+  } catch (error) {
+    console.error('[SpeakerForcer] Ошибка подготовки аудио элемента:', error);
+    return null;
+  }
+}
+
+/**
+ * Вспомогательная функция для установки speaker sinkId
+ */
+async function setSpeakerSinkId(audioElement: HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> }, maxRetries = 5): Promise<void> {
+  if (!audioElement.setSinkId) {
+    return;
+  }
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, 150 * attempt));
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
+
+      if (audioOutputs.length === 0 && attempt < maxRetries - 1) {
+        continue;
+      }
+
+      // КРИТИЧНО: Пропускаем первое устройство (earpiece), используем второе или последнее
+      let speakerDevice = null;
+
+      if (audioOutputs.length > 1) {
+        speakerDevice = audioOutputs[1]; // Второе устройство - обычно speaker
+      } else if (audioOutputs.length > 2) {
+        speakerDevice = audioOutputs[audioOutputs.length - 1]; // Последнее устройство
+      }
+
+      if (speakerDevice) {
+        await audioElement.setSinkId(speakerDevice.deviceId);
+        console.log('[SpeakerForcer] Установлен speaker:', speakerDevice.label);
+        return;
+      } else {
+        // Если нет других устройств, пробуем пустую строку (default)
+        await audioElement.setSinkId('');
+        return;
+      }
+    } catch (error) {
+      if (attempt === maxRetries - 1) {
+        try {
+          await audioElement.setSinkId('');
+        } catch (e) {
+          // Игнорируем финальную ошибку
+        }
+      }
+    }
+  }
+}
 
 /**
  * Принудительно устанавливает speaker mode для всех аудио элементов
@@ -17,6 +184,9 @@ export async function forceSpeakerMode(): Promise<void> {
   forcingInProgress = true;
 
   try {
+    // КРИТИЧНО: Сначала создаем подготовленный аудио элемент с speaker mode
+    await prepareAudioElementWithSpeaker();
+
     // 1. Создаем временный аудио элемент для инициализации speaker mode
     const tempAudio = document.createElement('audio');
     tempAudio.autoplay = false;
@@ -70,15 +240,9 @@ export async function forceSpeakerMode(): Promise<void> {
             }
 
             if (speakerDevice) {
-              await audioWithSink.setSinkId(speakerDevice.deviceId);
+              await setSpeakerSinkId(audioWithSink);
               speakerForced = true;
-              
-              // Проверяем, что установка прошла успешно
-              const currentSinkId = (tempAudio as any).sinkId || '';
-              if (currentSinkId === speakerDevice.deviceId) {
-                console.log('[SpeakerForcer] Speaker mode установлен:', speakerDevice.label);
-                return;
-              }
+              return;
             }
           } catch (error) {
             // Если это последняя попытка, пробуем установить пустую строку
@@ -183,26 +347,7 @@ export async function reforceSpeakerMode(audioElement: HTMLAudioElement): Promis
     return;
   }
 
-  try {
-    // Даем небольшую задержку для инициализации потока
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
-
-    if (audioOutputs.length > 1) {
-      // Используем второе устройство
-      await audioWithSink.setSinkId(audioOutputs[1].deviceId);
-    } else {
-      await audioWithSink.setSinkId('');
-    }
-  } catch (error) {
-    // Пробуем установить пустую строку
-    try {
-      await audioWithSink.setSinkId('');
-    } catch (e) {
-      // Игнорируем ошибки
-    }
-  }
+  // Используем ту же функцию установки sinkId
+  await setSpeakerSinkId(audioWithSink, 3);
 }
 
