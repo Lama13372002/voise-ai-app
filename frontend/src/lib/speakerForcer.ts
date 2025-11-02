@@ -42,6 +42,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
       setSinkId?: (deviceId: string) => Promise<void>;
     };
 
+    // Устанавливаем speaker mode
     if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
       await setSpeakerSinkId(audioWithSink);
     }
@@ -83,15 +84,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
       }
     }
 
-    // Если не удалось создать поток, все равно устанавливаем speaker mode
-    const audioWithSink = audio as HTMLAudioElement & {
-      setSinkId?: (deviceId: string) => Promise<void>;
-    };
-
-    if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
-      await setSpeakerSinkId(audioWithSink);
-    }
-
+    // Если не удалось создать AudioContext, все равно сохраняем элемент
     preparedAudioElement = audio;
     audioElementPrepared = true;
 
