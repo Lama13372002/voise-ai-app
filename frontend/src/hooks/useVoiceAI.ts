@@ -421,21 +421,25 @@ export function useVoiceAI(): UseVoiceAIReturn {
       pcRef.current.ontrack = async (event) => {
         if (!audioRef.current) return;
 
-        // КРИТИЧНО: Если audioRef уже использует подготовленный элемент с потоком,
-        // сохраняем существующий поток и заменяем его только треками из нового потока
-        // Это сохраняет speaker mode, установленный при подготовке
+        // КРИТИЧНО: Устанавливаем speaker mode ДО замены потока
         const { reforceSpeakerMode } = await import('@/lib/speakerForcer');
-        
-        // Сначала принудительно устанавливаем speaker mode ДО замены потока
         await reforceSpeakerMode(audioRef.current);
         
-        // Останавливаем старые треки если они есть
-        if (audioRef.current.srcObject) {
-          const oldStream = audioRef.current.srcObject as MediaStream;
-          oldStream.getTracks().forEach(track => track.stop());
+        // Останавливаем старые треки если есть старый поток (но не тестовый из подготовленного элемента)
+        const oldStream = audioRef.current.srcObject as MediaStream | null;
+        if (oldStream) {
+          // Не останавливаем треки, если это может быть тестовый поток для speaker mode
+          // Просто заменяем srcObject - браузер сам разберется
+          const tracks = oldStream.getTracks();
+          // Останавливаем только если это явно WebRTC треки (с id начинающимся с 'recv')
+          tracks.forEach(track => {
+            if (track.id.startsWith('recv') || track.id.includes('rtp')) {
+              track.stop();
+            }
+          });
         }
         
-        // Устанавливаем новый поток
+        // Устанавливаем новый поток от ИИ
         audioRef.current.srcObject = event.streams[0];
         
         // КРИТИЧНО: Немедленно устанавливаем speaker mode снова ПОСЛЕ установки потока
@@ -477,11 +481,35 @@ export function useVoiceAI(): UseVoiceAIReturn {
           }
         }, 1000);
 
-        // Начинаем воспроизведение
+        // КРИТИЧНО: Начинаем воспроизведение - это важно для работы аудио
         try {
-          await audioRef.current.play();
+          // Убеждаемся, что элемент готов к воспроизведению
+          if (audioRef.current.paused) {
+            await audioRef.current.play();
+          } else if (audioRef.current.readyState < 2) {
+            // Если элемент еще не готов, ждем и пробуем снова
+            audioRef.current.addEventListener('canplay', async () => {
+              try {
+                if (audioRef.current && audioRef.current.paused) {
+                  await audioRef.current.play();
+                }
+              } catch (e) {
+                console.error('[useVoiceAI] Ошибка воспроизведения после canplay:', e);
+              }
+            }, { once: true });
+          }
         } catch (playError) {
-          // Игнорируем ошибки воспроизведения (они могут быть из-за политики автоплея)
+          console.error('[useVoiceAI] Ошибка воспроизведения аудио:', playError);
+          // Пробуем еще раз через небольшую задержку
+          setTimeout(async () => {
+            if (audioRef.current) {
+              try {
+                await audioRef.current.play();
+              } catch (e) {
+                console.error('[useVoiceAI] Повторная ошибка воспроизведения:', e);
+              }
+            }
+          }, 100);
         }
       };
 
