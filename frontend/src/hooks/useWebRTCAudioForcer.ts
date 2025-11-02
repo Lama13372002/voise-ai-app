@@ -100,57 +100,93 @@ export function useWebRTCAudioForcer(): WebRTCAudioForcerReturn {
       };
 
       if (audioElementExtended.setSinkId) {
-        try {
-          // Пытаемся получить список аудио устройств
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
+        // Функция для получения и установки громкого динамика с повторными попытками
+        const setSpeakerWithRetry = async (maxRetries = 3, delay = 100) => {
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+              // При первой попытке делаем небольшую задержку, чтобы дать браузеру время инициализировать устройства
+              if (attempt > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay * attempt));
+              }
 
-          // АГРЕССИВНЫЙ поиск громкого динамика - проверяем ВСЕ возможные варианты
-          let speakerDevice = null;
+              // Пытаемся получить список аудио устройств
+              const devices = await navigator.mediaDevices.enumerateDevices();
+              const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
 
-          // Приоритет 1: Устройства с явным указанием speaker
-          speakerDevice = audioOutputs.find(device =>
-            device.label.toLowerCase().includes('speaker') ||
-            device.label.toLowerCase().includes('динамик') ||
-            device.label.toLowerCase().includes('speakerphone') ||
-            device.label.toLowerCase().includes('громкий') ||
-            device.label.toLowerCase().includes('loud')
-          );
+              // Если устройств нет, пробуем еще раз
+              if (audioOutputs.length === 0) {
+                continue;
+              }
 
-          // Приоритет 2: НЕ earpiece устройства (исключаем явные earpiece)
-          if (!speakerDevice) {
-            speakerDevice = audioOutputs.find(device =>
-              !device.label.toLowerCase().includes('earpiece') &&
-              !device.label.toLowerCase().includes('receiver') &&
-              !device.label.toLowerCase().includes('ear') &&
-              !device.label.toLowerCase().includes('телефон') &&
-              !device.label.toLowerCase().includes('phone') &&
-              device.deviceId !== ''
-            );
+              // АГРЕССИВНЫЙ поиск громкого динамика - проверяем ВСЕ возможные варианты
+              let speakerDevice = null;
+
+              // КРИТИЧНО: Пропускаем первое устройство, так как оно почти всегда earpiece
+              // Приоритет 1: Устройства с явным указанием speaker (кроме первого)
+              const nonFirstOutputs = audioOutputs.slice(1);
+              speakerDevice = nonFirstOutputs.find(device =>
+                device.label.toLowerCase().includes('speaker') ||
+                device.label.toLowerCase().includes('динамик') ||
+                device.label.toLowerCase().includes('speakerphone') ||
+                device.label.toLowerCase().includes('громкий') ||
+                device.label.toLowerCase().includes('loud')
+              );
+
+              // Приоритет 2: НЕ earpiece устройства (исключаем явные earpiece)
+              if (!speakerDevice) {
+                speakerDevice = nonFirstOutputs.find(device =>
+                  !device.label.toLowerCase().includes('earpiece') &&
+                  !device.label.toLowerCase().includes('receiver') &&
+                  !device.label.toLowerCase().includes('ear') &&
+                  !device.label.toLowerCase().includes('телефон') &&
+                  !device.label.toLowerCase().includes('phone') &&
+                  device.deviceId !== ''
+                );
+              }
+
+              // Приоритет 3: Второе устройство в списке (часто это speaker)
+              if (!speakerDevice && audioOutputs.length > 1) {
+                speakerDevice = audioOutputs[1];
+              }
+
+              // Приоритет 4: Последнее устройство (обычно speaker)
+              if (!speakerDevice && audioOutputs.length > 2) {
+                speakerDevice = audioOutputs[audioOutputs.length - 1];
+              }
+
+              // Приоритет 5: Default device как последний вариант
+              if (!speakerDevice) {
+                speakerDevice = audioOutputs.find(device => device.deviceId === 'default');
+              }
+
+              // Устанавливаем найденное устройство или пустую строку (что часто означает default speaker)
+              const deviceId = speakerDevice ? speakerDevice.deviceId : '';
+              
+              // КРИТИЧНО: Если это первый запуск и устройств мало, используем пустую строку
+              // Пустая строка обычно означает default speaker в большинстве браузеров
+              if (deviceId === '' || (audioOutputs.length <= 1 && attempt === 0)) {
+                await audioElementExtended.setSinkId('');
+              } else {
+                await audioElementExtended.setSinkId(deviceId);
+              }
+
+              // Если успешно установили, выходим из цикла
+              return;
+            } catch (sinkError) {
+              // Если это последняя попытка, пробуем установить пустую строку
+              if (attempt === maxRetries - 1) {
+                try {
+                  await audioElementExtended.setSinkId('');
+                } catch (e) {
+                  // Игнорируем ошибки на последней попытке
+                }
+              }
+            }
           }
+        };
 
-          // Приоритет 3: Любое устройство кроме первого (первое часто earpiece)
-          if (!speakerDevice && audioOutputs.length > 1) {
-            speakerDevice = audioOutputs[1];
-          }
-
-          // Приоритет 4: Default device как последний вариант
-          if (!speakerDevice) {
-            speakerDevice = audioOutputs.find(device => device.deviceId === 'default');
-          }
-
-          if (speakerDevice) {
-            await audioElementExtended.setSinkId(speakerDevice.deviceId);
-          } else {
-            await audioElementExtended.setSinkId('');
-          }
-        } catch (sinkError) {
-          try {
-            await audioElementExtended.setSinkId('');
-          } catch (e) {
-            // Игнорируем критические ошибки
-          }
-        }
+        // Вызываем функцию с повторными попытками
+        await setSpeakerWithRetry();
       }
 
       // 3. Создаем Web Audio контекст для дополнительного контроля И МАКСИМАЛЬНОЙ громкости
