@@ -62,6 +62,14 @@ export default function TMAApp() {
 
       setTg(telegram);
 
+      // КРИТИЧНО: Принудительно устанавливаем speaker mode ДО всего остального
+      // Это важно для первого запуска TMA
+      import('@/lib/speakerForcer').then(({ forceSpeakerMode }) => {
+        forceSpeakerMode().catch(() => {
+          // Игнорируем ошибки при ранней инициализации
+        });
+      });
+
       // Настраиваем тему и расширяем приложение
       telegram.ready();
       telegram.expand();
