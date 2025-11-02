@@ -35,8 +35,18 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
     // Добавляем в DOM чтобы элемент был готов
     document.body.appendChild(audio);
 
-    // КРИТИЧНО: Создаем пустой MediaStream для "захвата" speaker mode
-    // Браузер может переключиться на earpiece только если нет активного аудио элемента
+    // КРИТИЧНО: Устанавливаем speaker mode БЕЗ создания потока
+    // Это важно для "захвата" speaker mode до того, как браузер переключится на earpiece
+    // НЕ создаем тестовый поток, чтобы не мешать реальному потоку от ИИ
+    const audioWithSink = audio as HTMLAudioElement & {
+      setSinkId?: (deviceId: string) => Promise<void>;
+    };
+
+    if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
+      await setSpeakerSinkId(audioWithSink);
+    }
+
+    // Создаем AudioContext для блокировки переключения на earpiece (но БЕЗ потока на audio элементе)
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (AudioContextClass) {
       try {
@@ -45,61 +55,31 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
           await ctx.resume();
         }
 
-        // Создаем неслышимый поток через speaker
+        // Создаем неслышимый поток напрямую в destination (не через MediaStream)
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
-        gainNode.gain.value = 0.001; // Почти неслышимый, но активный
+        gainNode.gain.value = 0.00001; // Почти неслышимый
         
-        // Используем очень низкую частоту, которую не слышно
-        oscillator.frequency.value = 1;
+        oscillator.frequency.value = 20000; // Ультразвук
         oscillator.type = 'sine';
 
         oscillator.connect(gainNode);
         gainNode.connect(ctx.destination);
         oscillator.start();
 
-        // КРИТИЧНО: Сначала устанавливаем speaker mode ДО создания потока
-        // Это важно для "захвата" speaker mode до того, как браузер переключится на earpiece
-        const audioWithSink = audio as HTMLAudioElement & {
-          setSinkId?: (deviceId: string) => Promise<void>;
-        };
-
-        if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
-          await setSpeakerSinkId(audioWithSink);
-        }
-
-        // Создаем MediaStream из AudioContext
-        const destination = ctx.createMediaStreamDestination();
-        gainNode.connect(destination);
-        
-        // Устанавливаем поток на аудио элемент
-        audio.srcObject = destination.stream;
-        
-        // КРИТИЧНО: Повторно устанавливаем speaker mode ПОСЛЕ установки потока
-        if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
-          await setSpeakerSinkId(audioWithSink);
-        }
-
-        // Запускаем воспроизведение (неслышимого) звука
-        try {
-          await audio.play();
-        } catch (e) {
-          // Игнорируем ошибки автоплея
-        }
-
-        preparedAudioElement = audio;
-        audioElementPrepared = true;
-        
-        console.log('[SpeakerForcer] Аудио элемент подготовлен с speaker mode');
-
         // Сохраняем контекст для дальнейшего использования
         (window as any).__speakerAudioContext = ctx;
         (window as any).__speakerOscillator = oscillator;
         (window as any).__speakerGainNode = gainNode;
 
+        preparedAudioElement = audio;
+        audioElementPrepared = true;
+        
+        console.log('[SpeakerForcer] Аудио элемент подготовлен с speaker mode (без тестового потока)');
+
         return audio;
       } catch (error) {
-        console.error('[SpeakerForcer] Ошибка создания MediaStream:', error);
+        console.error('[SpeakerForcer] Ошибка создания AudioContext:', error);
       }
     }
 
