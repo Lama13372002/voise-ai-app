@@ -64,7 +64,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
           setSinkId?: (deviceId: string) => Promise<void>;
         };
 
-        if (audioWithSink.setSinkId) {
+        if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
           await setSpeakerSinkId(audioWithSink);
         }
 
@@ -76,7 +76,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
         audio.srcObject = destination.stream;
         
         // КРИТИЧНО: Повторно устанавливаем speaker mode ПОСЛЕ установки потока
-        if (audioWithSink.setSinkId) {
+        if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
           await setSpeakerSinkId(audioWithSink);
         }
 
@@ -108,7 +108,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
       setSinkId?: (deviceId: string) => Promise<void>;
     };
 
-    if (audioWithSink.setSinkId) {
+    if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
       await setSpeakerSinkId(audioWithSink);
     }
 
@@ -126,7 +126,7 @@ export async function prepareAudioElementWithSpeaker(): Promise<HTMLAudioElement
  * Вспомогательная функция для установки speaker sinkId
  */
 async function setSpeakerSinkId(audioElement: HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> }, maxRetries = 5): Promise<void> {
-  if (!audioElement.setSinkId) {
+  if (!audioElement.setSinkId || typeof audioElement.setSinkId !== 'function') {
     return;
   }
 
@@ -203,7 +203,7 @@ export async function forceSpeakerMode(): Promise<void> {
       setSinkId?: (deviceId: string) => Promise<void>;
     };
 
-    if (audioWithSink.setSinkId) {
+    if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
       // Функция для установки speaker с множественными попытками
       const setSpeakerWithRetry = async (maxRetries = 5) => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -307,32 +307,32 @@ export async function forceSpeakerMode(): Promise<void> {
  * Применяет speaker mode ко всем существующим аудио элементам
  */
 export function applySpeakerToAllAudioElements(): void {
-  const audioElements = document.querySelectorAll('audio');
-  audioElements.forEach((audio) => {
-    const audioWithSink = audio as HTMLAudioElement & {
-      setSinkId?: (deviceId: string) => Promise<void>;
-    };
+    const audioElements = document.querySelectorAll('audio');
+    audioElements.forEach((audio) => {
+      const audioWithSink = audio as HTMLAudioElement & {
+        setSinkId?: (deviceId: string) => Promise<void>;
+      };
 
-    if (audioWithSink.setSinkId) {
-      // Получаем устройства и выбираем speaker
-      navigator.mediaDevices.enumerateDevices().then((devices) => {
-        const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
-        
-        if (audioOutputs.length > 1) {
-          audioWithSink.setSinkId(audioOutputs[1].deviceId).catch(() => {
+      if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
+        // Получаем устройства и выбираем speaker
+        navigator.mediaDevices.enumerateDevices().then((devices) => {
+          const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
+          
+          if (audioOutputs.length > 1) {
+            audioWithSink.setSinkId!(audioOutputs[1].deviceId).catch(() => {
+              audioWithSink.setSinkId!('').catch(() => {});
+            });
+          } else {
+            audioWithSink.setSinkId!('').catch(() => {});
+          }
+        }).catch(() => {
+          // Если не удается получить устройства, пробуем установить пустую строку
+          if (audioWithSink.setSinkId && typeof audioWithSink.setSinkId === 'function') {
             audioWithSink.setSinkId('').catch(() => {});
-          });
-        } else {
-          audioWithSink.setSinkId('').catch(() => {});
-        }
-      }).catch(() => {
-        // Если не удается получить устройства, пробуем установить пустую строку
-        if (audioWithSink.setSinkId) {
-          audioWithSink.setSinkId('').catch(() => {});
-        }
-      });
-    }
-  });
+          }
+        });
+      }
+    });
 }
 
 /**
@@ -343,7 +343,7 @@ export async function reforceSpeakerMode(audioElement: HTMLAudioElement): Promis
     setSinkId?: (deviceId: string) => Promise<void>;
   };
 
-  if (!audioWithSink.setSinkId) {
+  if (!audioWithSink.setSinkId || typeof audioWithSink.setSinkId !== 'function') {
     return;
   }
 
