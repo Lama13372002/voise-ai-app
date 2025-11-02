@@ -371,8 +371,20 @@ export function useVoiceAI(): UseVoiceAIReturn {
         audioRef.current.setAttribute('audio-session', 'playback');
         audioRef.current.style.cssText = '-webkit-audio-session: playback !important; audio-session: playback !important;';
 
+        // КРИТИЧНО: Всегда даем небольшую задержку для инициализации браузера
+        // Это важно, так как при первом входе в Telegram и TMA браузер еще не полностью готов
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         // Принудительно применяем настройки speaker ДО получения потока
         await forceAudioToSpeaker(audioRef.current);
+
+        // Повторно применяем настройки через небольшую задержку
+        // Это гарантирует, что speaker mode будет установлен даже если первая попытка не сработала
+        setTimeout(async () => {
+          if (audioRef.current) {
+            await forceAudioToSpeaker(audioRef.current);
+          }
+        }, 500);
       }
 
       // Создаем RTCPeerConnection
@@ -388,8 +400,30 @@ export function useVoiceAI(): UseVoiceAIReturn {
         // Устанавливаем поток на уже настроенный аудио элемент
         audioRef.current.srcObject = event.streams[0];
 
-        // Применяем настройки speaker один раз
+        // КРИТИЧНО: Применяем настройки speaker с повторными попытками
+        // Это важно, так как при первом запуске браузер может еще не готов
         await forceAudioToSpeaker(audioRef.current);
+
+        // Повторно применяем настройки после небольшой задержки (для первого запуска)
+        setTimeout(async () => {
+          if (audioRef.current) {
+            await forceAudioToSpeaker(audioRef.current);
+          }
+        }, 300);
+
+        // Еще одна попытка через секунду (на случай если первая не сработала)
+        setTimeout(async () => {
+          if (audioRef.current) {
+            await forceAudioToSpeaker(audioRef.current);
+          }
+        }, 1000);
+
+        // Начинаем воспроизведение
+        try {
+          await audioRef.current.play();
+        } catch (playError) {
+          // Игнорируем ошибки воспроизведения (они могут быть из-за политики автоплея)
+        }
       };
 
       // Обработчик состояния соединения
