@@ -365,10 +365,24 @@ export function useVoiceAI(): UseVoiceAIReturn {
 
       // КРИТИЧНО: Создаем и настраиваем аудио элемент ДО создания RTCPeerConnection
       if (!audioRef.current) {
-        audioRef.current = new Audio();
-        audioRef.current.autoplay = true;
-        audioRef.current.volume = 1.0;
-        audioRef.current.muted = false;
+        // КРИТИЧНО: Сначала получаем подготовленный аудио элемент с speaker mode
+        // Это захватывает speaker mode ДО того, как браузер переключится на earpiece
+        const { prepareAudioElementWithSpeaker } = await import('@/lib/speakerForcer');
+        const preparedAudio = await prepareAudioElementWithSpeaker();
+
+        if (preparedAudio) {
+          // Используем подготовленный элемент
+          audioRef.current = preparedAudio;
+          audioRef.current.autoplay = true;
+          audioRef.current.volume = 1.0;
+          audioRef.current.muted = false;
+        } else {
+          // Если не удалось подготовить, создаем новый
+          audioRef.current = new Audio();
+          audioRef.current.autoplay = true;
+          audioRef.current.volume = 1.0;
+          audioRef.current.muted = false;
+        }
 
         // Принудительные атрибуты для speaker mode
         audioRef.current.setAttribute('playsinline', 'true');
@@ -377,10 +391,6 @@ export function useVoiceAI(): UseVoiceAIReturn {
         audioRef.current.setAttribute('webkit-audio-session', 'playback');
         audioRef.current.setAttribute('audio-session', 'playback');
         audioRef.current.style.cssText = '-webkit-audio-session: playback !important; audio-session: playback !important;';
-
-        // КРИТИЧНО: Всегда даем небольшую задержку для инициализации браузера
-        // Это важно, так как при первом входе в Telegram и TMA браузер еще не полностью готов
-        await new Promise(resolve => setTimeout(resolve, 100));
 
         // КРИТИЧНО: Используем глобальную утилиту для ранней установки speaker mode
         const { forceSpeakerMode } = await import('@/lib/speakerForcer');
@@ -392,14 +402,13 @@ export function useVoiceAI(): UseVoiceAIReturn {
         await forceAudioToSpeaker(audioRef.current);
 
         // Повторно применяем настройки через небольшую задержку
-        // Это гарантирует, что speaker mode будет установлен даже если первая попытка не сработала
         setTimeout(async () => {
           if (audioRef.current) {
             await forceAudioToSpeaker(audioRef.current);
             const { reforceSpeakerMode } = await import('@/lib/speakerForcer');
             await reforceSpeakerMode(audioRef.current);
           }
-        }, 500);
+        }, 300);
       }
 
       // Создаем RTCPeerConnection
@@ -412,13 +421,27 @@ export function useVoiceAI(): UseVoiceAIReturn {
       pcRef.current.ontrack = async (event) => {
         if (!audioRef.current) return;
 
-        // Устанавливаем поток на уже настроенный аудио элемент
-        audioRef.current.srcObject = event.streams[0];
-
-        // КРИТИЧНО: Используем глобальную утилиту для принудительной установки speaker
+        // КРИТИЧНО: Если audioRef уже использует подготовленный элемент с потоком,
+        // сохраняем существующий поток и заменяем его только треками из нового потока
+        // Это сохраняет speaker mode, установленный при подготовке
         const { reforceSpeakerMode } = await import('@/lib/speakerForcer');
+        
+        // Сначала принудительно устанавливаем speaker mode ДО замены потока
         await reforceSpeakerMode(audioRef.current);
-
+        
+        // Останавливаем старые треки если они есть
+        if (audioRef.current.srcObject) {
+          const oldStream = audioRef.current.srcObject as MediaStream;
+          oldStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Устанавливаем новый поток
+        audioRef.current.srcObject = event.streams[0];
+        
+        // КРИТИЧНО: Немедленно устанавливаем speaker mode снова ПОСЛЕ установки потока
+        // Делаем это синхронно, без задержки
+        await reforceSpeakerMode(audioRef.current);
+        
         // Применяем настройки speaker с повторными попытками
         await forceAudioToSpeaker(audioRef.current);
 
@@ -428,7 +451,15 @@ export function useVoiceAI(): UseVoiceAIReturn {
             await reforceSpeakerMode(audioRef.current);
             await forceAudioToSpeaker(audioRef.current);
           }
-        }, 200);
+        }, 100);
+
+        // Еще одна попытка через 300ms
+        setTimeout(async () => {
+          if (audioRef.current) {
+            await reforceSpeakerMode(audioRef.current);
+            await forceAudioToSpeaker(audioRef.current);
+          }
+        }, 300);
 
         // Еще одна попытка через 500ms
         setTimeout(async () => {
